@@ -229,8 +229,8 @@ export default function MobileCalendar() {
     if (swipeStartX.current === null) return;
     const delta = e.changedTouches[0].clientX - swipeStartX.current;
     swipeStartX.current = null;
-    if (Math.abs(delta) < 50) return; // too short — let tap events fire normally
-    navigate(delta < 0 ? 7 : -7);    // left swipe → next week, right → prev week
+    if (Math.abs(delta) < 30) return;                          // too short — let tap events fire normally
+    selectDay(addDays(selectedDate, delta < 0 ? 1 : -1));     // left swipe → next day, right → prev day
   };
   const weekDates   = getWeekDates(weekAnchor);
 

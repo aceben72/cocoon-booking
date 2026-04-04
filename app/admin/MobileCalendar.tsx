@@ -218,7 +218,20 @@ export default function MobileCalendar() {
   const [bEditConflict,         setBEditConflict]         = useState<string | null>(null);
   const [bEditConflictChecking, setBEditConflictChecking] = useState(false);
 
-  const timelineRef = useRef<HTMLDivElement>(null);
+  const timelineRef  = useRef<HTMLDivElement>(null);
+  const swipeStartX  = useRef<number | null>(null);
+
+  const handleWeekSwipeStart = (e: React.TouchEvent) => {
+    swipeStartX.current = e.touches[0].clientX;
+  };
+
+  const handleWeekSwipeEnd = (e: React.TouchEvent) => {
+    if (swipeStartX.current === null) return;
+    const delta = e.changedTouches[0].clientX - swipeStartX.current;
+    swipeStartX.current = null;
+    if (Math.abs(delta) < 50) return; // too short — let tap events fire normally
+    navigate(delta < 0 ? 7 : -7);    // left swipe → next week, right → prev week
+  };
   const weekDates   = getWeekDates(weekAnchor);
 
   // ── Fetch ───────────────────────────────────────────────────────────────
@@ -568,7 +581,11 @@ export default function MobileCalendar() {
     <div className="flex flex-col bg-[#f8f5f2]" style={{ height: "calc(100dvh - 56px)" }}>
 
       {/* ── Week strip ──────────────────────────────────────────────────── */}
-      <div className="bg-white border-b border-[#e8e0d8] px-2 py-2 flex items-center gap-0.5 shrink-0">
+      <div
+        className="bg-white border-b border-[#e8e0d8] px-2 py-2 flex items-center gap-0.5 shrink-0"
+        onTouchStart={handleWeekSwipeStart}
+        onTouchEnd={handleWeekSwipeEnd}
+      >
         <button
           onClick={() => navigate(-7)}
           className="p-2 text-[#9a8f87] hover:text-[#044e77] active:text-[#044e77] shrink-0"

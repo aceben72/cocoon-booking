@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
-import { SERVICES } from "@/lib/services-data";
 import { sendAppointmentConfirmation } from "@/lib/notifications";
 
 const DEPOSIT_CENTS = 5000;
@@ -131,24 +130,33 @@ export async function POST(
     return NextResponse.json({ error: "Failed to confirm booking" }, { status: 500 });
   }
 
-  // Send confirmation notifications (fire & forget)
-  if (appointment.clients && appointment.services) {
-    const localService = SERVICES.find((s) => s.name === appointment.services!.name);
+  // Send confirmation notifications (fire & forget).
+  // PostgREST returns foreign-key joins as single objects but types them as
+  // arrays — cast explicitly so the truthiness check works correctly.
+  const clientData  = appt.clients  as unknown as RawAppointment["clients"];
+  const serviceData = appt.services as unknown as RawAppointment["services"];
+
+  console.log("[pay/token] notification gate — clientData:", JSON.stringify(clientData), "serviceData:", JSON.stringify(serviceData));
+
+  if (clientData && serviceData) {
+    console.log("[pay/token] sending confirmation notifications for appointment", appointment.id);
     sendAppointmentConfirmation({
-      serviceName: appointment.services.name,
-      durationMinutes: appointment.services.duration_minutes,
+      serviceName: serviceData.name,
+      durationMinutes: serviceData.duration_minutes,
       priceCents,
       amountPaidCents,
       startISO: appointment.start_datetime,
       client: {
-        first_name: appointment.clients.first_name,
-        last_name: appointment.clients.last_name,
-        email: appointment.clients.email,
-        mobile: appointment.clients.mobile,
+        first_name: clientData.first_name,
+        last_name: clientData.last_name,
+        email: clientData.email,
+        mobile: clientData.mobile,
       },
-    }).catch(console.error);
-
-    void localService; // suppress unused warning
+    })
+      .then(() => console.log("[pay/token] confirmation notifications sent for appointment", appointment.id))
+      .catch((err) => console.error("[pay/token] confirmation notifications failed for appointment", appointment.id, err));
+  } else {
+    console.error("[pay/token] skipping notifications — missing client or service data. appt.id:", appointment.id, "clients:", JSON.stringify(appt.clients), "services:", JSON.stringify(appt.services));
   }
 
   return NextResponse.json({ success: true });

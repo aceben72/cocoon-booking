@@ -84,23 +84,27 @@ export async function sendAppointmentConfirmation(params: AppointmentNotifyParam
   const amountPaid = `$${(amountPaidCents / 100).toFixed(0)}`;
   const outstanding = priceCents - amountPaidCents;
 
+  console.log("[notifications] sending appointment confirmation email to:", client.email);
   try {
     await sendEmail(
       client.email,
       "Your Cocoon appointment is confirmed ✨",
       buildAppointmentConfirmationEmail({ client, serviceName, displayDate, displayTime, duration, amountPaid, outstanding }),
     );
+    console.log("[notifications] appointment confirmation email sent to:", client.email);
   } catch (err) {
-    console.error("[notifications] appointment confirmation email failed:", err);
+    console.error("[notifications] appointment confirmation email failed for:", client.email, err);
   }
 
+  console.log("[notifications] sending appointment confirmation SMS to:", client.mobile);
   try {
     await sendSMS(
       client.mobile,
       `Hi ${client.first_name}, your ${serviceName} at Cocoon is confirmed for ${displayDate} at ${displayTime}. See you then! – Amanda`,
     );
+    console.log("[notifications] appointment confirmation SMS sent to:", client.mobile);
   } catch (err) {
-    console.error("[notifications] appointment confirmation SMS failed:", err);
+    console.error("[notifications] appointment confirmation SMS failed for:", client.mobile, err);
   }
 }
 

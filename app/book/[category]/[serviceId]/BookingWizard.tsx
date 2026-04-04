@@ -27,9 +27,11 @@ interface BookingResult {
 interface Props {
   service: Service;
   categoryLabel: string;
+  /** True when the client arrived via a ?category=…&service=… deep link */
+  deepLinked?: boolean;
 }
 
-export default function BookingWizard({ service, categoryLabel }: Props) {
+export default function BookingWizard({ service, categoryLabel, deepLinked = false }: Props) {
   const [step, setStep] = useState<WizardStep>(2);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -83,10 +85,10 @@ export default function BookingWizard({ service, categoryLabel }: Props) {
               </p>
             </div>
             <Link
-              href={`/book/${service.category}`}
+              href={deepLinked ? "/book" : `/book/${service.category}`}
               className="text-xs text-[#9a8f87] hover:text-[#044e77] transition-colors shrink-0"
             >
-              Change
+              {deepLinked ? "Change service" : "Change"}
             </Link>
           </div>
         )}

@@ -1,10 +1,17 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import BookingProgress from "@/components/BookingProgress";
 import { CATEGORY_META } from "@/lib/services-data";
+import DeepLinkGate from "./DeepLinkGate";
 
 export default function SelectCategoryPage() {
   return (
     <>
+      {/* Reads ?category / ?service params and redirects when valid */}
+      <Suspense fallback={null}>
+        <DeepLinkGate />
+      </Suspense>
+
       <BookingProgress currentStep={1} />
 
       <div className="max-w-2xl mx-auto px-4 py-12">

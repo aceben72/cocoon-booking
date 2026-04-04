@@ -52,9 +52,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid Australian mobile number" }, { status: 400 });
   }
 
-  // Compute UTC datetimes
+  // Compute UTC datetimes.
+  // New clients get an extra 15 min added to the slot so the initial
+  // consultation doesn't push into the next booking.
+  const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
   const startISO = aestToUTC(date, time);
-  const totalMins = service.duration_minutes + service.padding_minutes;
+  const totalMins =
+    service.duration_minutes +
+    service.padding_minutes +
+    (client.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
   const endDate = new Date(new Date(startISO).getTime() + totalMins * 60 * 1000);
   const endISO = endDate.toISOString();
 
@@ -195,17 +201,30 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Upsert client ─────────────────────────────────────────────────────
+  // Use ILIKE for case-insensitive email matching so that e.g. Jane@gmail.com
+  // correctly resolves to an existing jane@gmail.com record.
   const { data: existingClient } = await supabase
     .from("clients")
     .select("id")
-    .eq("email", client.email)
-    .single();
+    .ilike("email", client.email)
+    .maybeSingle();
 
   let clientId: string;
 
   if (existingClient) {
+    // Returning client — keep their existing is_new_client value (never flip it
+    // back to true), but refresh name/mobile in case they've changed.
     clientId = existingClient.id;
+    await supabase
+      .from("clients")
+      .update({
+        first_name: client.first_name,
+        last_name: client.last_name,
+        mobile,
+      })
+      .eq("id", clientId);
   } else {
+    // Brand-new client — honour the is_new_client flag they submitted.
     const { data: newClient, error: clientError } = await supabase
       .from("clients")
       .insert({
@@ -308,6 +327,7 @@ export async function POST(request: NextRequest) {
     client: { ...client, mobile },
     startISO,
     amountPaidCents,
+    isNewClient: !!client.is_new_client,
   }).catch(console.error);
 
   return NextResponse.json({
@@ -317,6 +337,7 @@ export async function POST(request: NextRequest) {
     amountCents: service.price_cents,
     amountPaidCents,
     discountCents: totalDiscountCents,
+    isNewClient: !!client.is_new_client,
     client: {
       first_name: client.first_name,
       last_name: client.last_name,
@@ -331,8 +352,9 @@ async function sendConfirmationNotifications(params: {
   client: { first_name: string; last_name: string; email: string; mobile: string };
   startISO: string;
   amountPaidCents: number;
+  isNewClient: boolean;
 }) {
-  const { service, client, startISO, amountPaidCents } = params;
+  const { service, client, startISO, amountPaidCents, isNewClient } = params;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -359,7 +381,7 @@ async function sendConfirmationNotifications(params: {
         from: "Cocoon Skin & Beauty <hello@cocoonskinandbeauty.com.au>",
         to: client.email,
         subject: "Your Cocoon appointment is confirmed ✨",
-        html: buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents }),
+        html: buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient }),
       });
     } catch (err) {
       console.error("Resend error:", err);
@@ -402,8 +424,9 @@ function buildConfirmationEmail(params: {
   displayDate: string;
   displayTime: string;
   amountPaidCents: number;
+  isNewClient: boolean;
 }) {
-  const { client, service, displayDate, displayTime, amountPaidCents } = params;
+  const { client, service, displayDate, displayTime, amountPaidCents, isNewClient } = params;
   const paidDisplay = amountPaidCents === 0
     ? "Covered by promotions"
     : `$${(amountPaidCents / 100).toFixed(0)}`;
@@ -472,16 +495,24 @@ function buildConfirmationEmail(params: {
               </tr>
             </table>
 
-            <!-- Location placeholder -->
+            <!-- Location -->
             <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
-              <strong style="color:#1a1a1a;">Location:</strong> Pimpama, QLD
-              <br><em style="font-size:13px;">(Full address sent via SMS)</em>
+              <strong style="color:#1a1a1a;">Location</strong><br>
+              Cocoon Skin &amp; Beauty<br>
+              16 Bunderoo Circuit, Pimpama QLD 4209
             </p>
+
+            <!-- New client note -->
+            ${isNewClient ? `
+            <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
+              As a first-time client, please allow an extra 15 minutes for your initial consultation with Amanda.
+            </p>
+            ` : ""}
 
             <!-- Cancellation policy -->
             <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
                       border-top:1px solid #f0ebe4;padding-top:20px;">
-              Need to reschedule or cancel? Please contact Amanda at least 24 hours before your appointment.
+              Need to reschedule or cancel? Please contact Amanda at least 48 hours before your appointment.
             </p>
           </td>
         </tr>

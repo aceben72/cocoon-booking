@@ -301,7 +301,7 @@ export function PaymentPage({
 
       <p className="text-xs text-center text-[#b0a499] font-light mt-3">
         By confirming you agree to our cancellation policy.
-        Please provide 24 hours notice to cancel or reschedule.
+        Please provide 48 hours notice to cancel or reschedule.
       </p>
     </div>
   );

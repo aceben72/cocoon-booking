@@ -12,7 +12,7 @@ interface CalendarAppointment {
   status: string;
   notes: string | null;
   services: { name: string; duration_minutes: number } | null;
-  clients: { first_name: string; last_name: string } | null;
+  clients: { first_name: string; last_name: string; is_new_client?: boolean } | null;
 }
 
 interface CalendarBlockedPeriod {
@@ -973,12 +973,23 @@ export default function MobileCalendar() {
           <div className="px-4 pt-1 pb-10 overflow-y-auto max-h-[70dvh]">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-[15px] font-medium text-[#1a1a1a]">
-                  {selectedAppt.clients
-                    ? `${selectedAppt.clients.first_name} ${selectedAppt.clients.last_name}`
-                    : "Unknown client"}
-                </p>
-                <p className="text-xs text-[#9a8f87] mt-0.5">{selectedAppt.services?.name ?? "—"}</p>
+                <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                  <p className="text-[15px] font-medium text-[#1a1a1a]">
+                    {selectedAppt.clients
+                      ? `${selectedAppt.clients.first_name} ${selectedAppt.clients.last_name}`
+                      : "Unknown client"}
+                  </p>
+                  {selectedAppt.clients?.is_new_client && (
+                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                     bg-[#fbb040] text-[#044e77] shrink-0">
+                      New Client
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-[#9a8f87]">{selectedAppt.services?.name ?? "—"}</p>
+                {selectedAppt.clients?.is_new_client && (
+                  <p className="text-xs text-[#7a6f68] mt-0.5 italic">+15 min consultation allocated</p>
+                )}
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize
                 ${selectedAppt.status === "confirmed"       ? "bg-emerald-50 text-emerald-700 border-emerald-200" :

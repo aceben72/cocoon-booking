@@ -100,7 +100,7 @@ export default function ClassStepConfirmation({ result }: Props) {
 
       <div className="bg-[#f0ebe4] rounded-xl px-5 py-4 text-sm text-[#7a6f68] font-light text-left mb-8">
         <strong className="text-[#5a504a] font-medium">Cancellation policy:</strong>{" "}
-        Please provide at least 24 hours notice if you need to cancel.
+        Please provide at least 48 hours notice if you need to cancel.
         Contact Amanda directly to make any changes.
       </div>
 

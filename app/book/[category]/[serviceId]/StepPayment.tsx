@@ -10,6 +10,7 @@ interface BookingResult {
   startISO: string;
   amountCents: number;
   amountPaidCents: number;
+  isNewClient?: boolean;
   client: { first_name: string; last_name: string; email: string };
 }
 
@@ -557,7 +558,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
 
       <p className="text-xs text-center text-[#b0a499] font-light mt-3">
         By confirming you agree to our cancellation policy.
-        Please provide 24 hours notice to cancel or reschedule.
+        Please provide 48 hours notice to cancel or reschedule.
       </p>
     </div>
   );

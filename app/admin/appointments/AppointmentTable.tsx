@@ -1354,8 +1354,16 @@ export function AppointmentTable({
                       onClick={() => setExpandedId(expandedId === appt.id ? null : appt.id)}
                     >
                       <td className="px-4 py-3">
-                        <div className="font-medium text-[#1a1a1a]">
-                          {appt.clients?.first_name} {appt.clients?.last_name}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-[#1a1a1a]">
+                            {appt.clients?.first_name} {appt.clients?.last_name}
+                          </span>
+                          {appt.clients?.is_new_client && (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                             bg-[#fbb040] text-[#044e77] shrink-0">
+                              New Client
+                            </span>
+                          )}
                         </div>
                         <div className="text-[#7a6f68] text-xs">{appt.clients?.email}</div>
                       </td>
@@ -1461,7 +1469,16 @@ export function AppointmentTable({
                               </div>
                               <div>
                                 <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">New Client</div>
-                                <div>{appt.clients?.is_new_client ? "Yes" : "No"}</div>
+                                {appt.clients?.is_new_client ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#fbb040] text-[#044e77]">
+                                      Yes
+                                    </span>
+                                    <span className="text-xs text-[#7a6f68]">+15 min consultation</span>
+                                  </div>
+                                ) : (
+                                  <div>No</div>
+                                )}
                               </div>
                               <div>
                                 <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Service Total</div>

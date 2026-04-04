@@ -409,12 +409,13 @@ function buildClassConfirmationEmail(p: {
       </td></tr>
     </table>
     <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
-      <strong style="color:#1a1a1a;">Location:</strong> Pimpama, QLD
-      <br><em style="font-size:13px;">(Full address sent via SMS)</em>
+      <strong style="color:#1a1a1a;">Location</strong><br>
+      Cocoon Skin &amp; Beauty<br>
+      16 Bunderoo Circuit, Pimpama QLD 4209
     </p>
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
-      Need to cancel? Please contact Amanda at least 24 hours before your class.
+      Need to cancel? Please contact Amanda at least 48 hours before your class.
     </p>
   `);
 }
@@ -453,7 +454,8 @@ function buildClassCancellationEmail(p: {
     </p>
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
-      Questions? Contact Amanda directly.
+      Questions? Contact Amanda directly.<br>
+      Cocoon Skin &amp; Beauty · 16 Bunderoo Circuit, Pimpama QLD 4209
     </p>
   `);
 }
@@ -502,12 +504,13 @@ function buildAppointmentConfirmationEmail(p: {
       </td></tr>
     </table>
     <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
-      <strong style="color:#1a1a1a;">Location:</strong> Pimpama, QLD
-      <br><em style="font-size:13px;">(Full address sent via SMS)</em>
+      <strong style="color:#1a1a1a;">Location</strong><br>
+      Cocoon Skin &amp; Beauty<br>
+      16 Bunderoo Circuit, Pimpama QLD 4209
     </p>
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
-      Need to reschedule or cancel? Please contact Amanda at least 24 hours before your appointment.
+      Need to reschedule or cancel? Please contact Amanda at least 48 hours before your appointment.
     </p>
   `);
 }
@@ -544,8 +547,9 @@ function buildRescheduleEmail(p: {
       </td></tr>
     </table>
     <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
-      <strong style="color:#1a1a1a;">Location:</strong> Pimpama, QLD
-      <br><em style="font-size:13px;">(Full address sent via SMS)</em>
+      <strong style="color:#1a1a1a;">Location</strong><br>
+      Cocoon Skin &amp; Beauty<br>
+      16 Bunderoo Circuit, Pimpama QLD 4209
     </p>
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
@@ -614,7 +618,7 @@ function buildReminderEmail(p: {
 
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
-      Cocoon Skin &amp; Beauty · Pimpama, QLD<br>
+      Cocoon Skin &amp; Beauty · 16 Bunderoo Circuit, Pimpama QLD 4209<br>
       Questions? Email us at hello@cocoonskinandbeauty.com.au
     </p>
   `);

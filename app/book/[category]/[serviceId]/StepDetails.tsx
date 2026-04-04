@@ -152,33 +152,42 @@ export default function StepDetails({ onSubmit, onBack, backLabel = "Change time
           </Field>
 
           {/* New client */}
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <div className="mt-0.5">
-              <input
-                type="checkbox"
-                checked={form.is_new_client}
-                onChange={(e) => update("is_new_client", e.target.checked)}
-                className="sr-only"
-              />
-              <div
-                className={[
-                  "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
-                  form.is_new_client
-                    ? "bg-[#044e77] border-[#044e77]"
-                    : "bg-white border-[#d0c8c0] group-hover:border-[#044e77]",
-                ].join(" ")}
-              >
-                {form.is_new_client && (
-                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
+          <div className="flex flex-col gap-2">
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <div className="mt-0.5">
+                <input
+                  type="checkbox"
+                  checked={form.is_new_client}
+                  onChange={(e) => update("is_new_client", e.target.checked)}
+                  className="sr-only"
+                />
+                <div
+                  className={[
+                    "w-5 h-5 rounded border-2 flex items-center justify-center transition-colors",
+                    form.is_new_client
+                      ? "bg-[#044e77] border-[#044e77]"
+                      : "bg-white border-[#d0c8c0] group-hover:border-[#044e77]",
+                  ].join(" ")}
+                >
+                  {form.is_new_client && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
               </div>
-            </div>
-            <span className="text-sm text-[#5a504a] font-light leading-tight pt-0.5">
-              This is my first visit to Cocoon
-            </span>
-          </label>
+              <span className="text-sm text-[#5a504a] font-light leading-tight pt-0.5">
+                This is my first visit to Cocoon
+              </span>
+            </label>
+            {form.is_new_client && (
+              <div className="ml-8 px-4 py-3 bg-[#f0ebe4] rounded-xl border border-[#e0d8d0]">
+                <p className="text-sm italic text-[#044e77] font-light leading-snug">
+                  As a new client, please allow an extra 15 minutes for your initial consultation with Amanda.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         <button

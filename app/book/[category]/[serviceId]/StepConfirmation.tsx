@@ -10,6 +10,7 @@ interface BookingResult {
   startISO: string;
   amountCents: number;
   amountPaidCents: number;
+  isNewClient?: boolean;
   client: { first_name: string; last_name: string; email: string };
 }
 
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export default function StepConfirmation({ result }: Props) {
-  const { service, startISO, amountCents, amountPaidCents, client } = result;
+  const { service, startISO, amountCents, amountPaidCents, client, isNewClient } = result;
   const hasOutstanding = amountPaidCents < amountCents;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
@@ -75,7 +76,7 @@ export default function StepConfirmation({ result }: Props) {
           <DetailRow label="Duration" value={formatDuration(service.duration_minutes)} />
           <DetailRow label="Date" value={displayDate} />
           <DetailRow label="Time" value={displayTime} />
-          <DetailRow label="Location" value="Pimpama, QLD" note="Full address in your confirmation SMS" />
+          <DetailRow label="Location" value="16 Bunderoo Circuit, Pimpama QLD 4209" note="Cocoon Skin & Beauty" />
           <div className="pt-4 border-t border-[#f0ebe4] space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-[#3a3330]">
@@ -97,6 +98,15 @@ export default function StepConfirmation({ result }: Props) {
         </div>
       </div>
 
+      {/* New client extra-time note */}
+      {isNewClient && (
+        <div className="bg-[#f0ebe4] rounded-xl px-5 py-4 text-sm text-left mb-4 border border-[#e0d8d0]">
+          <p className="italic text-[#044e77] font-light leading-relaxed">
+            As a new client, please allow an extra 15 minutes for your initial consultation with Amanda.
+          </p>
+        </div>
+      )}
+
       {/* Cancellation / balance note */}
       <div className="bg-[#f0ebe4] rounded-xl px-5 py-4 text-sm text-[#7a6f68] font-light text-left mb-8 space-y-2">
         {hasOutstanding && (
@@ -107,7 +117,7 @@ export default function StepConfirmation({ result }: Props) {
         )}
         <p>
           <strong className="text-[#5a504a] font-medium">Cancellation policy:</strong>{" "}
-          Please provide at least 24 hours notice if you need to cancel or reschedule.
+          Please provide at least 48 hours notice if you need to cancel or reschedule.
           Contact Amanda directly to make any changes.
         </p>
       </div>

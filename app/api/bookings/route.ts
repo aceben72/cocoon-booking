@@ -404,17 +404,24 @@ async function sendConfirmationNotifications(params: {
   // Confirmation email via Resend
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
+    console.log("[bookings] Resend API key present:", !!resendKey);
     console.log("[bookings] sending confirmation email to:", client.email);
     try {
-      const { Resend } = await import("resend");
-      const resend = new Resend(resendKey);
-      const result = await resend.emails.send({
-        from: "Cocoon Skin & Beauty <hello@cocoonskinandbeauty.com.au>",
-        to: client.email,
-        subject: "Your Cocoon appointment is confirmed ✨",
-        html: buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl }),
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Cocoon Skin & Beauty <hello@cocoonskinandbeauty.com.au>",
+          to: [client.email],
+          subject: "Your Cocoon appointment is confirmed ✨",
+          html: buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl }),
+        }),
       });
-      console.log("[bookings] Resend result:", JSON.stringify(result));
+      const resendResult = await response.json();
+      console.log("[bookings] Resend result:", JSON.stringify(resendResult));
     } catch (err) {
       console.error("[bookings] Resend error:", err);
     }

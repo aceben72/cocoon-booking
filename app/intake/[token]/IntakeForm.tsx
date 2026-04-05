@@ -5,61 +5,99 @@ import { useRef, useState, useEffect, useCallback } from "react";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Responses {
-  // Section 1 – Skin Profile
+  // Section 1 – Personal Details
+  dob: string;
+  address: string;
+  postcode: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  silent_treatment: string;
+  email_list: string;
+  // Section 2 – Medical History
+  medical_conditions: string[];
+  other_condition: string;
+  // Section 3 – Medications & Skincare
+  medications: string[];
+  skincare_products: string[];
+  // Section 4 – Skin Profile
   skin_type: string;
+  sun_exposure: string;
+  skin_healing: string;
+  bruises_easily: string;
   skin_concerns: string[];
-  skin_sensitivity: string;
-  // Section 2 – Health & Medical
-  is_pregnant: string;
-  skin_conditions: string[];
-  takes_medications: string;
-  medications_detail: string;
+  // Section 5 – General Information & Waiver
+  smokes: string;
+  pregnant: string;
   has_allergies: string;
   allergies_detail: string;
-  recent_procedures: string;
-  procedures_detail: string;
-  // Section 3 – Current Routine
-  uses_spf: string;
-  active_ingredients: string[];
-  routine_description: string;
-  had_facial_before: string;
-  // Section 4 – Lifestyle
-  water_intake: string;
-  sun_exposure: string;
-  stress_level: string;
-  sleep_hours: string;
-  // Section 5 – Goals (no signature here, that's separate)
-  goals: string;
-  additional_notes: string;
+  advanced_treatments: string;
+  treatments_detail: string;
+  photo_consent: string;
 }
 
 const EMPTY: Responses = {
+  dob: "",
+  address: "",
+  postcode: "",
+  emergency_contact_name: "",
+  emergency_contact_phone: "",
+  silent_treatment: "",
+  email_list: "",
+  medical_conditions: [],
+  other_condition: "",
+  medications: [],
+  skincare_products: [],
   skin_type: "",
+  sun_exposure: "",
+  skin_healing: "",
+  bruises_easily: "",
   skin_concerns: [],
-  skin_sensitivity: "",
-  is_pregnant: "",
-  skin_conditions: [],
-  takes_medications: "",
-  medications_detail: "",
+  smokes: "",
+  pregnant: "",
   has_allergies: "",
   allergies_detail: "",
-  recent_procedures: "",
-  procedures_detail: "",
-  uses_spf: "",
-  active_ingredients: [],
-  routine_description: "",
-  had_facial_before: "",
-  water_intake: "",
-  sun_exposure: "",
-  stress_level: "",
-  sleep_hours: "",
-  goals: "",
-  additional_notes: "",
+  advanced_treatments: "",
+  treatments_detail: "",
+  photo_consent: "",
 };
 
 const TOTAL_STEPS = 5;
 
 // ── Helper components ─────────────────────────────────────────────────────────
+
+function TextInput({
+  label,
+  type = "text",
+  value,
+  onChange,
+  required,
+  placeholder,
+}: {
+  label: string;
+  type?: string;
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <div className="mb-5">
+      <label className="block text-sm font-medium text-[#1a1a1a] mb-1.5">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full border border-[#ddd8d2] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a]
+                   placeholder-[#c0b8b0] focus:outline-none focus:border-[#044e77]
+                   focus:ring-1 focus:ring-[#044e77]/20 bg-white"
+      />
+    </div>
+  );
+}
 
 function RadioGroup({
   label,
@@ -108,12 +146,14 @@ function CheckboxGroup({
   options,
   value,
   onChange,
+  hint,
 }: {
   label: string;
   name: string;
   options: string[];
   value: string[];
   onChange: (v: string[]) => void;
+  hint?: string;
 }) {
   function toggle(opt: string) {
     if (value.includes(opt)) {
@@ -125,7 +165,7 @@ function CheckboxGroup({
   return (
     <div className="mb-6">
       <p className="text-sm font-medium text-[#1a1a1a] mb-1">{label}</p>
-      <p className="text-xs text-[#9a8f87] mb-3">Select all that apply</p>
+      <p className="text-xs text-[#9a8f87] mb-3">{hint ?? "Select all that apply"}</p>
       <div className="flex flex-col gap-2">
         {options.map((opt) => (
           <label key={`${name}-${opt}`} className="flex items-center gap-3 cursor-pointer group">
@@ -201,34 +241,24 @@ function SignaturePad({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    // Size canvas to its CSS pixel dimensions
-    const resize = () => {
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * window.devicePixelRatio;
-      canvas.height = rect.height * window.devicePixelRatio;
-      const ctx = canvas.getContext("2d")!;
-      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-      ctx.strokeStyle = "#044e77";
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-    };
-    resize();
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    const ctx = canvas.getContext("2d")!;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    ctx.strokeStyle = "#044e77";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
   }, []);
 
   function getXY(e: React.MouseEvent | React.TouchEvent): { x: number; y: number } {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
     if ("touches" in e) {
-      return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top,
-      };
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
-    return {
-      x: (e as React.MouseEvent).clientX - rect.left,
-      y: (e as React.MouseEvent).clientY - rect.top,
-    };
+    return { x: (e as React.MouseEvent).clientX - rect.left, y: (e as React.MouseEvent).clientY - rect.top };
   }
 
   function handleStart(e: React.MouseEvent | React.TouchEvent) {
@@ -296,7 +326,7 @@ function SignaturePad({
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
 function Progress({ step }: { step: number }) {
-  const LABELS = ["Skin", "Health", "Routine", "Lifestyle", "Goals"];
+  const LABELS = ["Personal", "Medical", "Medications", "Skin", "Waiver"];
   return (
     <div className="flex items-center gap-1.5 justify-center mb-8">
       {LABELS.map((label, i) => (
@@ -365,21 +395,37 @@ export default function IntakeForm({
   function canAdvance(): boolean {
     switch (step) {
       case 1:
-        return !!r.skin_type && r.skin_concerns.length > 0 && !!r.skin_sensitivity;
-      case 2:
         return (
-          !!r.is_pregnant &&
-          r.skin_conditions.length > 0 &&
-          !!r.takes_medications &&
-          !!r.has_allergies &&
-          !!r.recent_procedures
+          !!r.dob &&
+          !!r.address.trim() &&
+          !!r.postcode.trim() &&
+          !!r.emergency_contact_name.trim() &&
+          !!r.emergency_contact_phone.trim() &&
+          !!r.silent_treatment &&
+          !!r.email_list
         );
+      case 2:
+        return r.medical_conditions.length > 0;
       case 3:
-        return !!r.uses_spf && r.active_ingredients.length > 0 && !!r.routine_description && !!r.had_facial_before;
+        return r.medications.length > 0 && r.skincare_products.length > 0;
       case 4:
-        return !!r.water_intake && !!r.sun_exposure && !!r.stress_level && !!r.sleep_hours;
+        return (
+          !!r.skin_type &&
+          !!r.sun_exposure &&
+          !!r.skin_healing &&
+          !!r.bruises_easily &&
+          r.skin_concerns.length > 0
+        );
       case 5:
-        return !!r.goals.trim() && consented && !!signature;
+        return (
+          !!r.smokes &&
+          !!r.pregnant &&
+          !!r.has_allergies &&
+          !!r.advanced_treatments &&
+          !!r.photo_consent &&
+          consented &&
+          !!signature
+        );
       default:
         return false;
     }
@@ -451,262 +497,323 @@ export default function IntakeForm({
 
         <div className="bg-white rounded-2xl border border-[#e8e0d8] px-6 py-7">
 
-          {/* ── Step 1: Skin Profile ── */}
+          {/* ── Step 1: Personal Details ── */}
           {step === 1 && (
             <div>
               <h2 className="font-[family-name:var(--font-cormorant)] italic text-xl text-[#044e77] mb-1">
-                About Your Skin
+                Personal Details
+              </h2>
+              <p className="text-xs text-[#9a8f87] mb-6">Please complete all fields below.</p>
+
+              <TextInput
+                label="Date of birth"
+                type="date"
+                value={r.dob}
+                onChange={(v) => set("dob", v)}
+                required
+              />
+              <TextInput
+                label="Address"
+                value={r.address}
+                onChange={(v) => set("address", v)}
+                required
+                placeholder="Street address"
+              />
+              <TextInput
+                label="Postcode"
+                value={r.postcode}
+                onChange={(v) => set("postcode", v)}
+                required
+                placeholder="e.g. 4209"
+              />
+              <TextInput
+                label="Emergency contact name"
+                value={r.emergency_contact_name}
+                onChange={(v) => set("emergency_contact_name", v)}
+                required
+                placeholder="Full name"
+              />
+              <TextInput
+                label="Emergency contact phone"
+                type="tel"
+                value={r.emergency_contact_phone}
+                onChange={(v) => set("emergency_contact_phone", v)}
+                required
+                placeholder="Mobile number"
+              />
+
+              <RadioGroup
+                label="Would you prefer your treatment to be silent?"
+                name="silent_treatment"
+                options={["Yes", "No"]}
+                value={r.silent_treatment}
+                onChange={(v) => set("silent_treatment", v)}
+              />
+
+              <RadioGroup
+                label="Would you like to be added to our email list for news and exclusive offers?"
+                name="email_list"
+                options={["Yes", "No"]}
+                value={r.email_list}
+                onChange={(v) => set("email_list", v)}
+              />
+            </div>
+          )}
+
+          {/* ── Step 2: Medical History ── */}
+          {step === 2 && (
+            <div>
+              <h2 className="font-[family-name:var(--font-cormorant)] italic text-xl text-[#044e77] mb-1">
+                Medical History
+              </h2>
+              <p className="text-xs text-[#9a8f87] mb-6">Select any conditions that apply. If none apply, select &ldquo;None of the above&rdquo;.</p>
+
+              <CheckboxGroup
+                label="Do you have or have you had any of the following conditions?"
+                name="medical_conditions"
+                options={[
+                  "Acne",
+                  "Arthritis",
+                  "Asthma",
+                  "Blood disorder",
+                  "Cancer",
+                  "Diabetes",
+                  "Epilepsy",
+                  "Herpes",
+                  "Hepatitis",
+                  "High blood pressure",
+                  "Low blood pressure",
+                  "Immune disorders",
+                  "Eczema",
+                  "Heart condition",
+                  "Warts",
+                  "Lupus",
+                  "Seizure disorder",
+                  "Skin disease/lesions",
+                  "HIV/AIDS",
+                  "Insomnia",
+                  "None of the above",
+                ]}
+                value={r.medical_conditions}
+                onChange={(v) => set("medical_conditions", v)}
+              />
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-[#1a1a1a] mb-1.5">
+                  Any other condition
+                </label>
+                <input
+                  type="text"
+                  value={r.other_condition}
+                  onChange={(e) => set("other_condition", e.target.value)}
+                  placeholder="Please describe if applicable"
+                  className="w-full border border-[#ddd8d2] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a]
+                             placeholder-[#c0b8b0] focus:outline-none focus:border-[#044e77]
+                             focus:ring-1 focus:ring-[#044e77]/20 bg-white"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Medications & Skincare ── */}
+          {step === 3 && (
+            <div>
+              <h2 className="font-[family-name:var(--font-cormorant)] italic text-xl text-[#044e77] mb-1">
+                Medications &amp; Skincare
+              </h2>
+              <p className="text-xs text-[#9a8f87] mb-6">Select all that currently apply. Choose &ldquo;None&rdquo; if nothing applies.</p>
+
+              <CheckboxGroup
+                label="Are you currently taking any of the following medications?"
+                name="medications"
+                options={[
+                  "Tretinoin Cream",
+                  "Blood thinning medication",
+                  "High Blood Pressure",
+                  "Cancer Treatments",
+                  "Retinol",
+                  "Accutane",
+                  "Low Blood Pressure",
+                  "Anti-Depressants",
+                  "Stieva-A",
+                  "Roaccutane",
+                  "Anti-Anxiety",
+                  "None",
+                ]}
+                value={r.medications}
+                onChange={(v) => set("medications", v)}
+              />
+
+              <CheckboxGroup
+                label="Which skincare products do you currently use?"
+                name="skincare_products"
+                options={[
+                  "Eye Make-Up Remover",
+                  "Cleansing Cream",
+                  "Skin Toner/Lotion",
+                  "Mask",
+                  "SPF sun protection",
+                  "Eye Cream",
+                  "Day Cream",
+                  "Night Cream",
+                  "Neck lotion",
+                  "Hand cream",
+                  "Serums",
+                  "Facial Scrub",
+                  "Exfoliants",
+                  "Body Lotion",
+                  "Body Scrub",
+                  "None",
+                ]}
+                value={r.skincare_products}
+                onChange={(v) => set("skincare_products", v)}
+              />
+            </div>
+          )}
+
+          {/* ── Step 4: Skin Profile ── */}
+          {step === 4 && (
+            <div>
+              <h2 className="font-[family-name:var(--font-cormorant)] italic text-xl text-[#044e77] mb-1">
+                Skin Profile
               </h2>
               <p className="text-xs text-[#9a8f87] mb-6">Help us understand your skin so we can tailor your treatment.</p>
 
               <RadioGroup
                 label="What is your skin type?"
                 name="skin_type"
-                options={["Normal", "Dry", "Oily", "Combination", "Sensitive"]}
+                options={["Normal", "Oily", "Dry", "Combo", "Unsure"]}
                 value={r.skin_type}
                 onChange={(v) => set("skin_type", v)}
+              />
+
+              <RadioGroup
+                label="Your exposure to the sun?"
+                name="sun_exposure"
+                options={["Never", "Light", "Moderate", "Excessive"]}
+                value={r.sun_exposure}
+                onChange={(v) => set("sun_exposure", v)}
+              />
+
+              <RadioGroup
+                label="How does your skin heal?"
+                name="skin_healing"
+                options={["Fast", "Slow", "Scars", "Pigments"]}
+                value={r.skin_healing}
+                onChange={(v) => set("skin_healing", v)}
+              />
+
+              <RadioGroup
+                label="Do you get bruises easily?"
+                name="bruises_easily"
+                options={["No", "Yes"]}
+                value={r.bruises_easily}
+                onChange={(v) => set("bruises_easily", v)}
               />
 
               <CheckboxGroup
                 label="What are your primary skin concerns?"
                 name="skin_concerns"
                 options={[
-                  "Acne & Breakouts",
-                  "Fine Lines & Wrinkles",
-                  "Dullness",
-                  "Uneven Skin Tone",
-                  "Enlarged Pores",
+                  "Acne",
+                  "Blackheads",
+                  "Broken Capillaries",
+                  "Pigmentation",
+                  "Dryness/Dull Skin",
+                  "Eczema",
+                  "Fine lines/Wrinkles",
+                  "Hyper pigmentation",
+                  "Scarring",
+                  "Oily Skin",
+                  "Psoriasis",
                   "Redness",
-                  "Dehydration",
-                  "Dark Circles",
-                  "Other",
+                  "Sensitivity",
+                  "Sun Damage",
+                  "Thin Skin",
+                  "Rosacea",
                 ]}
                 value={r.skin_concerns}
                 onChange={(v) => set("skin_concerns", v)}
               />
-
-              <RadioGroup
-                label="How sensitive is your skin?"
-                name="skin_sensitivity"
-                options={[
-                  "Not sensitive",
-                  "Slightly sensitive",
-                  "Moderately sensitive",
-                  "Very sensitive / reactive",
-                ]}
-                value={r.skin_sensitivity}
-                onChange={(v) => set("skin_sensitivity", v)}
-              />
             </div>
           )}
 
-          {/* ── Step 2: Health & Medical ── */}
-          {step === 2 && (
+          {/* ── Step 5: General Information & Waiver ── */}
+          {step === 5 && (
             <div>
               <h2 className="font-[family-name:var(--font-cormorant)] italic text-xl text-[#044e77] mb-1">
-                Health &amp; Medical
+                General Information &amp; Waiver
               </h2>
-              <p className="text-xs text-[#9a8f87] mb-6">This information helps ensure your treatment is safe and effective.</p>
+              <p className="text-xs text-[#9a8f87] mb-6">A few final questions, then please read and sign the waiver below.</p>
 
               <RadioGroup
-                label="Are you currently pregnant or breastfeeding?"
-                name="is_pregnant"
-                options={["No", "Pregnant", "Breastfeeding"]}
-                value={r.is_pregnant}
-                onChange={(v) => set("is_pregnant", v)}
-              />
-
-              <CheckboxGroup
-                label="Do you have any of the following skin conditions?"
-                name="skin_conditions"
-                options={["Acne (active)", "Eczema", "Psoriasis", "Rosacea", "Dermatitis", "Cold Sores", "None"]}
-                value={r.skin_conditions}
-                onChange={(v) => set("skin_conditions", v)}
+                label="Do you smoke or vape?"
+                name="smokes"
+                options={["Yes", "No"]}
+                value={r.smokes}
+                onChange={(v) => set("smokes", v)}
               />
 
               <RadioGroup
-                label="Are you currently taking any medications?"
-                name="takes_medications"
-                options={["No", "Yes"]}
-                value={r.takes_medications}
-                onChange={(v) => set("takes_medications", v)}
-              />
-              <ConditionalTextarea
-                trigger={r.takes_medications === "Yes"}
-                label="Please list your medications (including Roaccutane, retinoids, antibiotics, blood thinners)"
-                placeholder="e.g. Roaccutane, antibiotics…"
-                value={r.medications_detail}
-                onChange={(v) => set("medications_detail", v)}
+                label="Are you pregnant?"
+                name="pregnant"
+                options={["Yes", "No"]}
+                value={r.pregnant}
+                onChange={(v) => set("pregnant", v)}
               />
 
               <RadioGroup
                 label="Do you have any known allergies?"
                 name="has_allergies"
-                options={["No", "Yes"]}
+                options={["Yes", "No"]}
                 value={r.has_allergies}
                 onChange={(v) => set("has_allergies", v)}
               />
               <ConditionalTextarea
                 trigger={r.has_allergies === "Yes"}
-                label="Please list your allergies (food, environmental, skincare)"
+                label="Please list your allergies"
                 placeholder="e.g. fragrance, nuts, latex…"
                 value={r.allergies_detail}
                 onChange={(v) => set("allergies_detail", v)}
               />
 
               <RadioGroup
-                label="Have you had any facial procedures in the last 3 months?"
-                name="recent_procedures"
-                options={["No", "Yes"]}
-                value={r.recent_procedures}
-                onChange={(v) => set("recent_procedures", v)}
+                label="Have you had any advanced skin treatments in the past 4 weeks including Botox or laser treatment?"
+                name="advanced_treatments"
+                options={["Yes", "No"]}
+                value={r.advanced_treatments}
+                onChange={(v) => set("advanced_treatments", v)}
               />
               <ConditionalTextarea
-                trigger={r.recent_procedures === "Yes"}
-                label="Please describe (e.g. injectables, laser, chemical peel)"
-                placeholder="e.g. lip filler 6 weeks ago…"
-                value={r.procedures_detail}
-                onChange={(v) => set("procedures_detail", v)}
-              />
-            </div>
-          )}
-
-          {/* ── Step 3: Current Routine ── */}
-          {step === 3 && (
-            <div>
-              <h2 className="font-[family-name:var(--font-cormorant)] italic text-xl text-[#044e77] mb-1">
-                Your Current Routine
-              </h2>
-              <p className="text-xs text-[#9a8f87] mb-6">Tell us about how you currently care for your skin.</p>
-
-              <RadioGroup
-                label="Do you use SPF daily?"
-                name="uses_spf"
-                options={["Yes, daily", "Sometimes", "Rarely / No"]}
-                value={r.uses_spf}
-                onChange={(v) => set("uses_spf", v)}
-              />
-
-              <CheckboxGroup
-                label="Which active ingredients do you currently use?"
-                name="active_ingredients"
-                options={[
-                  "Retinol / Retinoids",
-                  "Vitamin C",
-                  "AHAs or BHAs (exfoliants)",
-                  "Niacinamide",
-                  "Benzoyl Peroxide",
-                  "None",
-                ]}
-                value={r.active_ingredients}
-                onChange={(v) => set("active_ingredients", v)}
+                trigger={r.advanced_treatments === "Yes"}
+                label="Please provide details"
+                placeholder="e.g. Botox 3 weeks ago, laser resurfacing…"
+                value={r.treatments_detail}
+                onChange={(v) => set("treatments_detail", v)}
               />
 
               <RadioGroup
-                label="How would you describe your skincare routine?"
-                name="routine_description"
-                options={[
-                  "Minimal — just cleanse & moisturise",
-                  "Basic — cleanser, toner, moisturiser",
-                  "Moderate — includes serums or actives",
-                  "Comprehensive — full multi-step routine",
-                ]}
-                value={r.routine_description}
-                onChange={(v) => set("routine_description", v)}
-              />
-
-              <RadioGroup
-                label="Have you had a professional facial before?"
-                name="had_facial_before"
+                label="Do you consent to photos being used on social media and/or the Cocoon website?"
+                name="photo_consent"
                 options={["Yes", "No"]}
-                value={r.had_facial_before}
-                onChange={(v) => set("had_facial_before", v)}
-              />
-            </div>
-          )}
-
-          {/* ── Step 4: Lifestyle ── */}
-          {step === 4 && (
-            <div>
-              <h2 className="font-[family-name:var(--font-cormorant)] italic text-xl text-[#044e77] mb-1">
-                Lifestyle
-              </h2>
-              <p className="text-xs text-[#9a8f87] mb-6">Your lifestyle can significantly affect your skin health.</p>
-
-              <RadioGroup
-                label="How much water do you drink per day?"
-                name="water_intake"
-                options={["Less than 1 litre", "1–2 litres", "More than 2 litres"]}
-                value={r.water_intake}
-                onChange={(v) => set("water_intake", v)}
+                value={r.photo_consent}
+                onChange={(v) => set("photo_consent", v)}
               />
 
-              <RadioGroup
-                label="How much sun exposure do you get?"
-                name="sun_exposure"
-                options={[
-                  "Rarely — mostly indoors",
-                  "Moderate — some outdoor time",
-                  "High — outdoors most days",
-                ]}
-                value={r.sun_exposure}
-                onChange={(v) => set("sun_exposure", v)}
-              />
-
-              <RadioGroup
-                label="How would you rate your current stress level?"
-                name="stress_level"
-                options={["Low", "Moderate", "High"]}
-                value={r.stress_level}
-                onChange={(v) => set("stress_level", v)}
-              />
-
-              <RadioGroup
-                label="How many hours of sleep do you get per night on average?"
-                name="sleep_hours"
-                options={["Less than 6 hours", "6–7 hours", "8 or more hours"]}
-                value={r.sleep_hours}
-                onChange={(v) => set("sleep_hours", v)}
-              />
-            </div>
-          )}
-
-          {/* ── Step 5: Goals & Consent ── */}
-          {step === 5 && (
-            <div>
-              <h2 className="font-[family-name:var(--font-cormorant)] italic text-xl text-[#044e77] mb-1">
-                Goals &amp; Consent
-              </h2>
-              <p className="text-xs text-[#9a8f87] mb-6">Almost done — just a few final details.</p>
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-[#1a1a1a] mb-2">
-                  What are your main goals for today&apos;s treatment? <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  value={r.goals}
-                  onChange={(e) => set("goals", e.target.value)}
-                  placeholder="e.g. I want to address dullness and get a brighter, more even complexion…"
-                  rows={3}
-                  className="w-full border border-[#ddd8d2] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a]
-                             placeholder-[#c0b8b0] focus:outline-none focus:border-[#044e77]
-                             focus:ring-1 focus:ring-[#044e77]/20 resize-none"
-                />
-              </div>
-
-              <div className="mb-8">
-                <label className="block text-sm font-medium text-[#1a1a1a] mb-2">
-                  Is there anything else you&apos;d like Amanda to know?
-                </label>
-                <textarea
-                  value={r.additional_notes}
-                  onChange={(e) => set("additional_notes", e.target.value)}
-                  placeholder="Any concerns, questions, or special requests…"
-                  rows={2}
-                  className="w-full border border-[#ddd8d2] rounded-xl px-3 py-2.5 text-sm text-[#1a1a1a]
-                             placeholder-[#c0b8b0] focus:outline-none focus:border-[#044e77]
-                             focus:ring-1 focus:ring-[#044e77]/20 resize-none"
-                />
+              {/* Waiver */}
+              <div className="mb-6 mt-2 bg-[#f8f5f2] rounded-xl p-4 border border-[#e8e0d8]">
+                <p className="text-xs text-[#5a504a] leading-relaxed">
+                  I confirm that the information I have provided is accurate and complete. I have not withheld any
+                  information that may be relevant to my treatment or the results thereof. I am aware that there are
+                  often risks associated with Beauty, Skin and Laser procedures and that the services I am about to
+                  receive could have unfavourable results including but not limited to: allergic reaction, irritation,
+                  redness, soreness, swelling, grazing/burning etc. I will inform COCOON SKIN AND BEAUTY of any changes
+                  to the above information prior to future treatment. I understand results vary from person to person and
+                  will undertake the specific aftercare and advice given to me by my COCOON SKIN AND BEAUTY consultant.
+                  If I experience any reactions or responses I am to contact COCOON SKIN AND BEAUTY as soon as possible.
+                  By signing below, I further agree that I will not hold COCOON SKIN AND BEAUTY OR THEIR THERAPIST
+                  responsible should there be any unfavourable outcome or result.
+                </p>
               </div>
 
               {/* Signature */}
@@ -721,7 +828,7 @@ export default function IntakeForm({
                 />
               </div>
 
-              {/* Consent */}
+              {/* Consent checkbox */}
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} className="sr-only" />
                 <span
@@ -736,8 +843,7 @@ export default function IntakeForm({
                   )}
                 </span>
                 <span className="text-sm text-[#5a504a] leading-relaxed">
-                  I confirm that the information I have provided above is accurate to the best of my knowledge,
-                  and I consent to this information being used to assist in my treatment at Cocoon Skin &amp; Beauty.
+                  I have read and agree to the waiver above, and confirm all information provided is accurate.
                 </span>
               </label>
             </div>

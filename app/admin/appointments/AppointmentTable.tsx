@@ -68,6 +68,7 @@ interface Appointment {
     mobile: string;
     is_new_client: boolean;
   } | null;
+  intake_forms: { id: string; status: string }[];
 }
 
 const STATUS_COLOURS: Record<string, string> = {
@@ -1364,6 +1365,39 @@ export function AppointmentTable({
                               New Client
                             </span>
                           )}
+                          {(() => {
+                            const intake = appt.intake_forms?.[0];
+                            if (!intake) return null;
+                            if (intake.status === "pending") {
+                              return (
+                                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                                 bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                  Intake Pending
+                                </span>
+                              );
+                            }
+                            if (intake.status === "submitted") {
+                              return (
+                                <a href={`/admin/intake/${intake.id}`}
+                                   className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                              bg-blue-50 text-blue-700 border border-blue-200 shrink-0
+                                              hover:bg-blue-100 transition-colors">
+                                  Intake Submitted ↗
+                                </a>
+                              );
+                            }
+                            if (intake.status === "acknowledged") {
+                              return (
+                                <a href={`/admin/intake/${intake.id}`}
+                                   className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                              bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0
+                                              hover:bg-emerald-100 transition-colors">
+                                  Intake Acknowledged ↗
+                                </a>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                         <div className="text-[#7a6f68] text-xs">{appt.clients?.email}</div>
                       </td>

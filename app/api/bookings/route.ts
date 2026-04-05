@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
@@ -320,6 +320,29 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // ── Create intake form for new clients ───────────────────────────────────
+  let intakeFormUrl: string | null = null;
+
+  if (client.is_new_client) {
+    const intakeToken = randomBytes(32).toString("hex");
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    intakeFormUrl = `${appUrl}/intake/${intakeToken}`;
+
+    const { error: intakeErr } = await supabase.from("intake_forms").insert({
+      appointment_id: appointment.id,
+      client_id: clientId,
+      token: intakeToken,
+      expires_at: startISO, // expires when the appointment starts
+      status: "pending",
+    });
+
+    if (intakeErr) {
+      // Non-fatal — log but continue
+      console.error("[bookings] intake form insert failed:", intakeErr);
+      intakeFormUrl = null;
+    }
+  }
+
   // ── Send confirmation notifications (fire & forget) ───────────────────
   sendConfirmationNotifications({
     appointmentId: appointment.id,
@@ -328,6 +351,7 @@ export async function POST(request: NextRequest) {
     startISO,
     amountPaidCents,
     isNewClient: !!client.is_new_client,
+    intakeFormUrl,
   }).catch(console.error);
 
   return NextResponse.json({
@@ -353,8 +377,9 @@ async function sendConfirmationNotifications(params: {
   startISO: string;
   amountPaidCents: number;
   isNewClient: boolean;
+  intakeFormUrl: string | null;
 }) {
-  const { service, client, startISO, amountPaidCents, isNewClient } = params;
+  const { service, client, startISO, amountPaidCents, isNewClient, intakeFormUrl } = params;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -381,7 +406,7 @@ async function sendConfirmationNotifications(params: {
         from: "Cocoon Skin & Beauty <hello@cocoonskinandbeauty.com.au>",
         to: client.email,
         subject: "Your Cocoon appointment is confirmed ✨",
-        html: buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient }),
+        html: buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl }),
       });
     } catch (err) {
       console.error("Resend error:", err);
@@ -425,8 +450,9 @@ function buildConfirmationEmail(params: {
   displayTime: string;
   amountPaidCents: number;
   isNewClient: boolean;
+  intakeFormUrl: string | null;
 }) {
-  const { client, service, displayDate, displayTime, amountPaidCents, isNewClient } = params;
+  const { client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl } = params;
   const paidDisplay = amountPaidCents === 0
     ? "Covered by promotions"
     : `$${(amountPaidCents / 100).toFixed(0)}`;
@@ -507,6 +533,26 @@ function buildConfirmationEmail(params: {
             <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
               As a first-time client, please allow an extra 15 minutes for your initial consultation with Amanda.
             </p>
+            ` : ""}
+
+            <!-- Intake form CTA (new clients only) -->
+            ${isNewClient && intakeFormUrl ? `
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+              <tr><td>
+                <p style="color:#1a1a1a;font-size:14px;font-weight:500;margin:0 0 8px;">
+                  Complete your consultation form
+                </p>
+                <p style="color:#7a6f68;font-size:13px;line-height:1.6;margin:0 0 16px;">
+                  As a new client, please complete your pre-appointment consultation form before you arrive.
+                  It only takes a few minutes and helps Amanda personalise your treatment.
+                </p>
+                <a href="${intakeFormUrl}"
+                   style="display:inline-block;background:#044e77;color:#ffffff;font-size:14px;
+                          font-weight:500;text-decoration:none;padding:12px 28px;border-radius:8px;">
+                  Complete Intake Form →
+                </a>
+              </td></tr>
+            </table>
             ` : ""}
 
             <!-- Cancellation policy -->

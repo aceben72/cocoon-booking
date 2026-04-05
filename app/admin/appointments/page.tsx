@@ -33,6 +33,7 @@ interface RawAppointment {
     mobile: string;
     is_new_client: boolean;
   } | null;
+  intake_forms: { id: string; status: string }[];
 }
 
 export interface RawBlockedPeriod {
@@ -72,7 +73,8 @@ async function getAppointments(status: string, from: string, to: string): Promis
       id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents,
       square_payment_id, payment_link_token, notes, created_at,
       services ( name, category, duration_minutes ),
-      clients ( first_name, last_name, email, mobile, is_new_client )
+      clients ( first_name, last_name, email, mobile, is_new_client ),
+      intake_forms ( id, status )
     `)
     .order("start_datetime", { ascending: true });
 

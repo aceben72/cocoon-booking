@@ -321,25 +321,30 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Create intake form for new clients ───────────────────────────────────
+  // Wrapped in its own try/catch so any failure here CANNOT prevent the
+  // confirmation email from sending below.
   let intakeFormUrl: string | null = null;
 
   if (client.is_new_client) {
-    const intakeToken = randomBytes(32).toString("hex");
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
-    intakeFormUrl = `${appUrl}/intake/${intakeToken}`;
+    try {
+      const intakeToken = randomBytes(32).toString("hex");
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
-    const { error: intakeErr } = await supabase.from("intake_forms").insert({
-      appointment_id: appointment.id,
-      client_id: clientId,
-      token: intakeToken,
-      expires_at: startISO, // expires when the appointment starts
-      status: "pending",
-    });
+      const { error: intakeErr } = await supabase.from("intake_forms").insert({
+        appointment_id: appointment.id,
+        client_id: clientId,
+        token: intakeToken,
+        expires_at: startISO,
+        status: "pending",
+      });
 
-    if (intakeErr) {
-      // Non-fatal — log but continue
-      console.error("[bookings] intake form insert failed:", intakeErr);
-      intakeFormUrl = null;
+      if (intakeErr) {
+        console.error("[bookings] intake form insert failed:", intakeErr);
+      } else {
+        intakeFormUrl = `${appUrl}/intake/${intakeToken}`;
+      }
+    } catch (intakeEx) {
+      console.error("[bookings] intake form insert threw:", intakeEx);
     }
   }
 
@@ -399,6 +404,7 @@ async function sendConfirmationNotifications(params: {
   // Confirmation email via Resend
   const resendKey = process.env.RESEND_API_KEY;
   if (resendKey) {
+    console.log("[bookings] sending confirmation email to:", client.email);
     try {
       const { Resend } = await import("resend");
       const resend = new Resend(resendKey);
@@ -408,9 +414,12 @@ async function sendConfirmationNotifications(params: {
         subject: "Your Cocoon appointment is confirmed ✨",
         html: buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl }),
       });
+      console.log("[bookings] confirmation email sent to:", client.email);
     } catch (err) {
-      console.error("Resend error:", err);
+      console.error("[bookings] Resend error:", err);
     }
+  } else {
+    console.warn("[bookings] RESEND_API_KEY not set — skipping confirmation email");
   }
 
   // Confirmation SMS via ClickSend

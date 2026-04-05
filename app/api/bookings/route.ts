@@ -408,13 +408,13 @@ async function sendConfirmationNotifications(params: {
     try {
       const { Resend } = await import("resend");
       const resend = new Resend(resendKey);
-      await resend.emails.send({
+      const result = await resend.emails.send({
         from: "Cocoon Skin & Beauty <hello@cocoonskinandbeauty.com.au>",
         to: client.email,
         subject: "Your Cocoon appointment is confirmed ✨",
         html: buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl }),
       });
-      console.log("[bookings] confirmation email sent to:", client.email);
+      console.log("[bookings] Resend result:", JSON.stringify(result));
     } catch (err) {
       console.error("[bookings] Resend error:", err);
     }

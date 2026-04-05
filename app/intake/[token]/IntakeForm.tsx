@@ -723,10 +723,11 @@ export default function IntakeForm({
 
               {/* Consent */}
               <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} className="sr-only" />
                 <span
                   className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors
                     ${consented ? "border-[#044e77] bg-[#044e77]" : "border-[#ddd8d2] bg-white"}`}
-                  onClick={() => setConsented((v) => !v)}
+                  aria-hidden="true"
                 >
                   {consented && (
                     <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
@@ -734,7 +735,6 @@ export default function IntakeForm({
                     </svg>
                   )}
                 </span>
-                <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} className="sr-only" />
                 <span className="text-sm text-[#5a504a] leading-relaxed">
                   I confirm that the information I have provided above is accurate to the best of my knowledge,
                   and I consent to this information being used to assist in my treatment at Cocoon Skin &amp; Beauty.

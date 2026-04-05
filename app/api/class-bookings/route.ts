@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
 import { normaliseMobile } from "@/lib/utils";
 import { sendClassBookingConfirmation } from "@/lib/notifications";
 import type { ClientDetailsForm } from "@/types";
@@ -84,10 +83,7 @@ export async function POST(request: NextRequest) {
         environment: squareEnv === "production" ? SquareEnvironment.Production : SquareEnvironment.Sandbox,
       });
 
-      const idempotencyKey = createHash("sha256")
-        .update(`class|${sessionId}|${client.email}|${quantity}|${Date.now()}`)
-        .digest("hex")
-        .slice(0, 40);
+      const idempotencyKey = crypto.randomUUID().replace(/-/g, "").substring(0, 45);
 
       const ticketLabel = quantity === 1 ? "1 ticket" : `${quantity} tickets`;
       const { payment } = await squareClient.payments.create({

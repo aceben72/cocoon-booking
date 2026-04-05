@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash } from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { generateGiftCardCode } from "@/lib/gift-cards";
 
@@ -72,10 +71,7 @@ export async function POST(request: NextRequest) {
           : SquareEnvironment.Sandbox,
       });
 
-      const idempotencyKey = createHash("sha256")
-        .update(`gift-card|${denomination_cents}|${purchaser_email}|${recipient_email}|${Date.now()}`)
-        .digest("hex")
-        .slice(0, 40);
+      const idempotencyKey = crypto.randomUUID().replace(/-/g, "").substring(0, 45);
 
       await squareClient.payments.create({
         sourceId: square_payment_token,

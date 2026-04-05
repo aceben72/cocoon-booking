@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createHash } from "crypto";
 import { sendAppointmentConfirmation } from "@/lib/notifications";
 
 const DEPOSIT_CENTS = 5000;
@@ -92,10 +91,7 @@ export async function POST(
         environment: squareEnv === "production" ? SquareEnvironment.Production : SquareEnvironment.Sandbox,
       });
 
-      const idempotencyKey = createHash("sha256")
-        .update(`paylink|${token}|${amountPaidCents}`)
-        .digest("hex")
-        .slice(0, 40);
+      const idempotencyKey = crypto.randomUUID().replace(/-/g, "").substring(0, 45);
 
       const { payment } = await client.payments.create({
         sourceId: squarePaymentToken,

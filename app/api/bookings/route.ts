@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
@@ -175,10 +175,7 @@ export async function POST(request: NextRequest) {
           environment: squareEnv === "production" ? SquareEnvironment.Production : SquareEnvironment.Sandbox,
         });
 
-        const idempotencyKey = createHash("sha256")
-          .update(`${serviceId}|${date}|${time}|${client.email}`)
-          .digest("hex")
-          .slice(0, 40);
+        const idempotencyKey = crypto.randomUUID().replace(/-/g, "").substring(0, 45);
 
         const { payment } = await squareClient.payments.create({
           sourceId: squarePaymentToken,

@@ -348,8 +348,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── Send confirmation notifications (fire & forget) ───────────────────
-  sendConfirmationNotifications({
+  // ── Send confirmation notifications ──────────────────────────────────
+  // Awaited before returning so Vercel does not freeze the execution
+  // context before the outbound Resend/ClickSend requests complete.
+  await sendConfirmationNotifications({
     appointmentId: appointment.id,
     service,
     client: { ...client, mobile },
@@ -408,6 +410,7 @@ async function sendConfirmationNotifications(params: {
     console.log("[bookings] sending confirmation email to:", client.email);
 
     let emailHtml: string;
+    let emailHtml: string;
     try {
       console.log("[bookings] building email HTML");
       emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl });
@@ -417,6 +420,7 @@ async function sendConfirmationNotifications(params: {
       return;
     }
 
+    console.log("[bookings] about to fetch Resend");
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -431,6 +435,7 @@ async function sendConfirmationNotifications(params: {
           html: emailHtml,
         }),
       });
+      console.log("[bookings] fetch complete");
       const resendResult = await response.json();
       console.log("[bookings] Resend result:", JSON.stringify(resendResult));
     } catch (err) {

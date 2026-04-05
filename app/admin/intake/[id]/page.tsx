@@ -14,27 +14,34 @@ function supabase() {
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface IntakeResponses {
+  // Section 1
+  dob?: string;
+  address?: string;
+  postcode?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  silent_treatment?: string;
+  email_list?: string;
+  // Section 2
+  medical_conditions?: string[];
+  other_condition?: string;
+  // Section 3
+  medications?: string[];
+  skincare_products?: string[];
+  // Section 4
   skin_type?: string;
+  sun_exposure?: string;
+  skin_healing?: string;
+  bruises_easily?: string;
   skin_concerns?: string[];
-  skin_sensitivity?: string;
-  is_pregnant?: string;
-  skin_conditions?: string[];
-  takes_medications?: string;
-  medications_detail?: string;
+  // Section 5
+  smokes?: string;
+  pregnant?: string;
   has_allergies?: string;
   allergies_detail?: string;
-  recent_procedures?: string;
-  procedures_detail?: string;
-  uses_spf?: string;
-  active_ingredients?: string[];
-  routine_description?: string;
-  had_facial_before?: string;
-  water_intake?: string;
-  sun_exposure?: string;
-  stress_level?: string;
-  sleep_hours?: string;
-  goals?: string;
-  additional_notes?: string;
+  advanced_treatments?: string;
+  treatments_detail?: string;
+  photo_consent?: string;
 }
 
 interface RawIntakeForm {
@@ -57,7 +64,7 @@ interface RawIntakeForm {
   } | null;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Display helpers ───────────────────────────────────────────────────────────
 
 function aest(iso: string) {
   return new Intl.DateTimeFormat("en-AU", {
@@ -72,24 +79,60 @@ function aest(iso: string) {
   }).format(new Date(iso));
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionHeading({ title }: { title: string }) {
   return (
-    <div className="mb-8">
-      <h3 className="font-[family-name:var(--font-cormorant)] italic text-lg text-[#044e77] mb-4 pb-2 border-b border-[#f0ebe4]">
-        {title}
-      </h3>
-      <div className="grid gap-4">{children}</div>
+    <h3 className="font-[family-name:var(--font-cormorant)] italic text-lg text-[#044e77]
+                   mb-4 pb-2 border-b border-[#f0ebe4]">
+      {title}
+    </h3>
+  );
+}
+
+/** Single labelled field — radio answer or free text. */
+function Field({ label, value }: { label: string; value: string | undefined | null }) {
+  return (
+    <div className="mb-4">
+      <div className="text-xs uppercase tracking-wider text-[#9a8f87] mb-1">{label}</div>
+      <div className="text-sm text-[#1a1a1a]">
+        {value ? value : <span className="text-[#c0b8b0] italic">Not provided</span>}
+      </div>
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: string | string[] | undefined | null }) {
-  if (!value || (Array.isArray(value) && value.length === 0)) return null;
-  const display = Array.isArray(value) ? value.join(", ") : value;
+/** Checkbox group — shows every option, ticked or unticked. */
+function CheckList({
+  label,
+  options,
+  selected,
+}: {
+  label: string;
+  options: string[];
+  selected: string[] | undefined;
+}) {
+  const ticked = new Set(selected ?? []);
   return (
-    <div>
-      <div className="text-xs uppercase tracking-wider text-[#9a8f87] mb-0.5">{label}</div>
-      <div className="text-sm text-[#1a1a1a]">{display}</div>
+    <div className="mb-5">
+      <div className="text-xs uppercase tracking-wider text-[#9a8f87] mb-2">{label}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+        {options.map((opt) => {
+          const checked = ticked.has(opt);
+          return (
+            <div key={opt} className={`flex items-center gap-2 text-sm ${checked ? "text-[#1a1a1a]" : "text-[#c0b8b0]"}`}>
+              {checked ? (
+                <span className="w-4 h-4 rounded bg-[#044e77] flex items-center justify-center shrink-0">
+                  <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                    <path d="M1 3.5l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              ) : (
+                <span className="w-4 h-4 rounded border border-[#e0d8d0] bg-[#faf8f6] shrink-0" />
+              )}
+              {opt}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -135,7 +178,8 @@ export default async function AdminIntakePage({
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="font-[family-name:var(--font-cormorant)] italic text-[#044e77] text-3xl mb-1">
@@ -155,7 +199,7 @@ export default async function AdminIntakePage({
         </span>
       </div>
 
-      {/* Client info */}
+      {/* ── Client meta ── */}
       {client && (
         <div className="bg-white rounded-2xl border border-[#e8e0d8] px-6 py-5 mb-6 grid grid-cols-2 gap-4 text-sm">
           <div>
@@ -179,6 +223,7 @@ export default async function AdminIntakePage({
         </div>
       )}
 
+      {/* ── Pending notice ── */}
       {form.status === "pending" && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl px-6 py-5 mb-6 text-sm text-amber-800">
           This client has not yet submitted their intake form.
@@ -187,56 +232,121 @@ export default async function AdminIntakePage({
 
       {(form.status === "submitted" || form.status === "acknowledged") && (
         <>
-          {/* Responses */}
+          {/* ── Responses ── */}
           <div className="bg-white rounded-2xl border border-[#e8e0d8] px-6 py-7 mb-6">
-            <Section title="Skin Profile">
-              <Row label="Skin Type" value={r.skin_type} />
-              <Row label="Primary Concerns" value={r.skin_concerns} />
-              <Row label="Skin Sensitivity" value={r.skin_sensitivity} />
-            </Section>
 
-            <Section title="Health & Medical">
-              <Row label="Pregnant / Breastfeeding" value={r.is_pregnant} />
-              <Row label="Skin Conditions" value={r.skin_conditions} />
-              <Row label="Medications" value={r.takes_medications === "Yes" ? `Yes — ${r.medications_detail ?? ""}` : "No"} />
-              <Row label="Allergies" value={r.has_allergies === "Yes" ? `Yes — ${r.allergies_detail ?? ""}` : "No"} />
-              <Row label="Recent Facial Procedures" value={r.recent_procedures === "Yes" ? `Yes — ${r.procedures_detail ?? ""}` : "No"} />
-            </Section>
+            {/* Section 1 — Personal Details */}
+            <SectionHeading title="Personal Details" />
+            <Field label="Date of birth" value={r.dob} />
+            <Field label="Address" value={r.address} />
+            <Field label="Postcode" value={r.postcode} />
+            <Field label="Emergency contact name" value={r.emergency_contact_name} />
+            <Field label="Emergency contact phone" value={r.emergency_contact_phone} />
+            <Field label="Silent treatment preferred" value={r.silent_treatment} />
+            <Field label="Added to email list" value={r.email_list} />
 
-            <Section title="Current Skincare Routine">
-              <Row label="Uses SPF Daily" value={r.uses_spf} />
-              <Row label="Active Ingredients" value={r.active_ingredients} />
-              <Row label="Routine Description" value={r.routine_description} />
-              <Row label="Had Professional Facial Before" value={r.had_facial_before} />
-            </Section>
+            {/* Section 2 — Medical History */}
+            <div className="mt-8">
+              <SectionHeading title="Medical History" />
+              <CheckList
+                label="Conditions"
+                options={[
+                  "Acne", "Arthritis", "Asthma", "Blood disorder", "Cancer",
+                  "Diabetes", "Epilepsy", "Herpes", "Hepatitis", "High blood pressure",
+                  "Low blood pressure", "Immune disorders", "Eczema", "Heart condition",
+                  "Warts", "Lupus", "Seizure disorder", "Skin disease/lesions", "HIV/AIDS",
+                  "Insomnia", "None of the above",
+                ]}
+                selected={r.medical_conditions}
+              />
+              <Field label="Any other condition" value={r.other_condition} />
+            </div>
 
-            <Section title="Lifestyle">
-              <Row label="Daily Water Intake" value={r.water_intake} />
-              <Row label="Sun Exposure" value={r.sun_exposure} />
-              <Row label="Stress Level" value={r.stress_level} />
-              <Row label="Sleep Per Night" value={r.sleep_hours} />
-            </Section>
+            {/* Section 3 — Medications & Skincare */}
+            <div className="mt-8">
+              <SectionHeading title="Medications &amp; Skincare" />
+              <CheckList
+                label="Current medications"
+                options={[
+                  "Tretinoin Cream", "Blood thinning medication", "High Blood Pressure",
+                  "Cancer Treatments", "Retinol", "Accutane", "Low Blood Pressure",
+                  "Anti-Depressants", "Stieva-A", "Roaccutane", "Anti-Anxiety", "None",
+                ]}
+                selected={r.medications}
+              />
+              <CheckList
+                label="Skincare products used"
+                options={[
+                  "Eye Make-Up Remover", "Cleansing Cream", "Skin Toner/Lotion", "Mask",
+                  "SPF sun protection", "Eye Cream", "Day Cream", "Night Cream",
+                  "Neck lotion", "Hand cream", "Serums", "Facial Scrub",
+                  "Exfoliants", "Body Lotion", "Body Scrub", "None",
+                ]}
+                selected={r.skincare_products}
+              />
+            </div>
 
-            <Section title="Goals">
-              <Row label="Treatment Goals" value={r.goals} />
-              <Row label="Additional Notes" value={r.additional_notes} />
-            </Section>
+            {/* Section 4 — Skin Profile */}
+            <div className="mt-8">
+              <SectionHeading title="Skin Profile" />
+              <Field label="Skin type" value={r.skin_type} />
+              <Field label="Sun exposure" value={r.sun_exposure} />
+              <Field label="How skin heals" value={r.skin_healing} />
+              <Field label="Bruises easily" value={r.bruises_easily} />
+              <CheckList
+                label="Skin concerns"
+                options={[
+                  "Acne", "Blackheads", "Broken Capillaries", "Pigmentation",
+                  "Dryness/Dull Skin", "Eczema", "Fine lines/Wrinkles", "Hyper pigmentation",
+                  "Scarring", "Oily Skin", "Psoriasis", "Redness",
+                  "Sensitivity", "Sun Damage", "Thin Skin", "Rosacea",
+                ]}
+                selected={r.skin_concerns}
+              />
+            </div>
+
+            {/* Section 5 — General Information & Waiver */}
+            <div className="mt-8">
+              <SectionHeading title="General Information &amp; Waiver" />
+              <Field label="Smokes or vapes" value={r.smokes} />
+              <Field label="Pregnant" value={r.pregnant} />
+              <Field
+                label="Known allergies"
+                value={
+                  r.has_allergies === "Yes"
+                    ? `Yes${r.allergies_detail ? ` — ${r.allergies_detail}` : ""}`
+                    : r.has_allergies
+                }
+              />
+              <Field
+                label="Advanced skin treatments in past 4 weeks"
+                value={
+                  r.advanced_treatments === "Yes"
+                    ? `Yes${r.treatments_detail ? ` — ${r.treatments_detail}` : ""}`
+                    : r.advanced_treatments
+                }
+              />
+              <Field label="Photo consent (social media / website)" value={r.photo_consent} />
+            </div>
           </div>
 
-          {/* Client signature */}
+          {/* ── Client signature ── */}
           {form.client_signature && (
             <div className="bg-white rounded-2xl border border-[#e8e0d8] px-6 py-5 mb-6">
-              <div className="text-xs uppercase tracking-wider text-[#9a8f87] mb-3">Client Signature</div>
+              <div className="text-xs uppercase tracking-wider text-[#9a8f87] mb-1">Client Signature</div>
+              {form.submitted_at && (
+                <div className="text-xs text-[#9a8f87] mb-3">Signed {aest(form.submitted_at)}</div>
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={form.client_signature}
                 alt="Client signature"
-                className="max-h-24 border border-[#e8e0d8] rounded-lg p-2 bg-white"
+                className="max-h-28 border border-[#e8e0d8] rounded-lg p-2 bg-white"
               />
             </div>
           )}
 
-          {/* Acknowledge / already-acknowledged */}
+          {/* ── Acknowledge (submitted) / Consultant signature (acknowledged) ── */}
           {form.status === "submitted" && (
             <IntakeAcknowledge formId={id} />
           )}
@@ -251,7 +361,7 @@ export default async function AdminIntakePage({
               <img
                 src={form.consultant_signature}
                 alt="Consultant signature"
-                className="max-h-24 border border-[#e8e0d8] rounded-lg p-2 bg-white"
+                className="max-h-28 border border-[#e8e0d8] rounded-lg p-2 bg-white"
               />
             </div>
           )}

@@ -410,7 +410,6 @@ async function sendConfirmationNotifications(params: {
     console.log("[bookings] sending confirmation email to:", client.email);
 
     let emailHtml: string;
-    let emailHtml: string;
     try {
       console.log("[bookings] building email HTML");
       emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl });

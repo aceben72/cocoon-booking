@@ -80,13 +80,34 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
 
-  const { data, error } = await supabase()
+  const db = supabase();
+
+  const { data, error } = await db
     .from("appointments")
     .update({ status })
     .eq("id", id)
-    .select("id, status")
+    .select("id, status, client_id")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+
+  // Clear is_new_client if this client now has more than one confirmed/completed appointment
+  if ((status === "confirmed" || status === "completed") && data.client_id) {
+    const { data: priorConfirmed } = await db
+      .from("appointments")
+      .select("id")
+      .eq("client_id", data.client_id)
+      .in("status", ["confirmed", "completed"])
+      .neq("id", id)
+      .limit(1);
+
+    if (priorConfirmed && priorConfirmed.length > 0) {
+      await db
+        .from("clients")
+        .update({ is_new_client: false })
+        .eq("id", data.client_id);
+    }
+  }
+
+  return NextResponse.json({ id: data.id, status: data.status });
 }

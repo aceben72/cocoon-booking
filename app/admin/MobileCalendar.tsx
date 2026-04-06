@@ -959,6 +959,7 @@ export default function MobileCalendar() {
             <NewBookingForm
               onClose={() => { setNewBookingSheet(false); setFabOpen(false); }}
               onCreated={() => fetchDay(selectedDate)}
+              initialDate={selectedDate}
             />
           </div>
         ) : null}

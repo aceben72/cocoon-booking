@@ -23,11 +23,12 @@ function todayAEST() {
 interface Props {
   onClose: () => void;
   onCreated: () => void;
+  initialDate?: string;
 }
 
-export function NewBookingForm({ onClose, onCreated }: Props) {
+export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   const [serviceId, setServiceId]   = useState(activeServices[0]?.id ?? "");
-  const [date, setDate]             = useState(todayAEST());
+  const [date, setDate]             = useState(initialDate ?? todayAEST());
   const [time, setTime]             = useState("10:00");
   const [firstName, setFirstName]   = useState("");
   const [lastName, setLastName]     = useState("");

@@ -22,13 +22,18 @@ export interface ClassNotifyParams {
 async function sendEmail(to: string, subject: string, html: string) {
   const key = process.env.RESEND_API_KEY;
   if (!key) return;
-  const { Resend } = await import("resend");
-  const resend = new Resend(key);
-  await resend.emails.send({
-    from: "Cocoon Skin & Beauty <hello@cocoonskinandbeauty.com.au>",
-    to,
-    subject,
-    html,
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "Cocoon Skin & Beauty <hello@cocoonskinandbeauty.com.au>",
+      to,
+      subject,
+      html,
+    }),
   });
 }
 

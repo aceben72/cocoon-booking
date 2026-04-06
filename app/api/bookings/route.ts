@@ -317,6 +317,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // ── Clear is_new_client if this is not their first confirmed appointment ──
+  const { data: priorConfirmed } = await supabase
+    .from("appointments")
+    .select("id")
+    .eq("client_id", clientId)
+    .in("status", ["confirmed", "completed"])
+    .neq("id", appointment.id)
+    .limit(1);
+
+  if (priorConfirmed && priorConfirmed.length > 0) {
+    await supabase
+      .from("clients")
+      .update({ is_new_client: false })
+      .eq("id", clientId);
+  }
+
   // ── Create intake form for new clients ───────────────────────────────────
   // Wrapped in its own try/catch so any failure here CANNOT prevent the
   // confirmation email from sending below.

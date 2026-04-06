@@ -13,6 +13,7 @@ function supabase() {
 
 interface RawAppointment {
   id: string;
+  client_id: string;
   start_datetime: string;
   status: string;
   amount_cents: number;
@@ -44,7 +45,7 @@ export async function POST(
   const { data: appt, error: apptErr } = await db
     .from("appointments")
     .select(`
-      id, start_datetime, status, amount_cents, payment_link_token_expires_at,
+      id, client_id, start_datetime, status, amount_cents, payment_link_token_expires_at,
       services ( name, category, duration_minutes ),
       clients ( first_name, last_name, email, mobile )
     `)
@@ -126,9 +127,25 @@ export async function POST(
     return NextResponse.json({ error: "Failed to confirm booking" }, { status: 500 });
   }
 
-  // Send confirmation notifications (fire & forget).
-  // PostgREST returns foreign-key joins as single objects but types them as
-  // arrays — cast explicitly so the truthiness check works correctly.
+  // ── Clear is_new_client if this is not their first confirmed appointment ──
+  const { data: priorConfirmed } = await db
+    .from("appointments")
+    .select("id")
+    .eq("client_id", appointment.client_id)
+    .in("status", ["confirmed", "completed"])
+    .neq("id", appointment.id)
+    .limit(1);
+
+  if (priorConfirmed && priorConfirmed.length > 0) {
+    await db
+      .from("clients")
+      .update({ is_new_client: false })
+      .eq("id", appointment.client_id);
+  }
+
+  // ── Send confirmation notifications ──────────────────────────────────────
+  // Awaited before returning so Vercel does not freeze the execution context
+  // before the outbound Resend/ClickSend requests complete.
   const clientData  = appt.clients  as unknown as RawAppointment["clients"];
   const serviceData = appt.services as unknown as RawAppointment["services"];
 
@@ -136,7 +153,7 @@ export async function POST(
 
   if (clientData && serviceData) {
     console.log("[pay/token] sending confirmation notifications for appointment", appointment.id);
-    sendAppointmentConfirmation({
+    await sendAppointmentConfirmation({
       serviceName: serviceData.name,
       durationMinutes: serviceData.duration_minutes,
       priceCents,
@@ -148,9 +165,8 @@ export async function POST(
         email: clientData.email,
         mobile: clientData.mobile,
       },
-    })
-      .then(() => console.log("[pay/token] confirmation notifications sent for appointment", appointment.id))
-      .catch((err) => console.error("[pay/token] confirmation notifications failed for appointment", appointment.id, err));
+    }).catch((err) => console.error("[pay/token] confirmation notifications failed for appointment", appointment.id, err));
+    console.log("[pay/token] confirmation notifications sent for appointment", appointment.id);
   } else {
     console.error("[pay/token] skipping notifications — missing client or service data. appt.id:", appointment.id, "clients:", JSON.stringify(appt.clients), "services:", JSON.stringify(appt.services));
   }

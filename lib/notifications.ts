@@ -699,45 +699,21 @@ export async function sendIntakeFormNotification(params: {
     amandaEmail,
     `Intake form submitted — ${clientName}`,
     emailWrapper(`
-      <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:28px;font-weight:400;
-                 font-style:italic;color:#044e77;margin:0 0 8px;">
-        New intake form received
-      </h1>
-      <p style="color:#7a6f68;font-size:15px;margin:0 0 24px;line-height:1.6;">
-        ${clientName} has completed their pre-appointment intake form.
+      <p style="color:#1a1a1a;font-size:15px;margin:0 0 8px;line-height:1.6;">
+        <strong>${clientName}</strong> — ${serviceName}, ${displayDate} at ${displayTime}
       </p>
-      <table width="100%" cellpadding="0" cellspacing="0"
-             style="background:#f8f5f2;border-radius:10px;padding:24px;margin-bottom:32px;">
-        <tr><td style="padding-bottom:12px;">
-          <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Client</span><br>
-          <strong style="font-size:16px;color:#1a1a1a;">${clientName}</strong>
-        </td></tr>
-        <tr><td style="padding-bottom:12px;">
-          <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Service</span><br>
-          <strong style="font-size:16px;color:#1a1a1a;">${serviceName}</strong>
-        </td></tr>
-        <tr><td style="padding-bottom:12px;">
-          <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Date</span><br>
-          <strong style="font-size:16px;color:#1a1a1a;">${displayDate}</strong>
-        </td></tr>
-        <tr><td>
-          <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Time</span><br>
-          <strong style="font-size:16px;color:#1a1a1a;">${displayTime}</strong>
-        </td></tr>
-      </table>
-      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+      <p style="color:#7a6f68;font-size:15px;margin:0 0 28px;line-height:1.6;">
+        A consultation form has been submitted. Click below to review it.
+      </p>
+      <table width="100%" cellpadding="0" cellspacing="0">
         <tr><td align="center">
           <a href="${intakeAdminUrl}"
              style="display:inline-block;background:#044e77;color:#ffffff;font-size:15px;
                     font-weight:500;text-decoration:none;padding:14px 36px;border-radius:8px;">
-            View Intake Form
+            View Consultation Form
           </a>
         </td></tr>
       </table>
-      <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
-                border-top:1px solid #f0ebe4;padding-top:20px;">
-        Review and sign off on the form before the appointment.
-      </p>
     `),
   );
 }

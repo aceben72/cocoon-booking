@@ -111,7 +111,7 @@ export default async function ClientDetailPage({
 }) {
   const { id } = await params;
 
-  const [clientRes, apptsRes, classBookingsRes] = await Promise.all([
+  const [clientRes, apptsRes, classBookingsRes, intakeRes] = await Promise.all([
     supabase()
       .from("clients")
       .select("id, first_name, last_name, email, mobile, is_new_client, notes, created_at")
@@ -138,13 +138,22 @@ export default async function ClientDetailPage({
       `)
       .eq("client_id", id)
       .order("created_at", { ascending: false }),
+
+    supabase()
+      .from("intake_forms")
+      .select("id, status, submitted_at")
+      .eq("client_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (clientRes.error || !clientRes.data) notFound();
 
-  const client   = clientRes.data;
-  const appts    = (apptsRes.data ?? []) as unknown as RawAppointment[];
-  const classBks = (classBookingsRes.data ?? []) as unknown as RawClassBooking[];
+  const client     = clientRes.data;
+  const appts      = (apptsRes.data ?? []) as unknown as RawAppointment[];
+  const classBks   = (classBookingsRes.data ?? []) as unknown as RawClassBooking[];
+  const intakeForm = intakeRes.data as { id: string; status: string; submitted_at: string | null } | null;
 
   // ── Compute summary stats (completed appointments only) ───────────────────
   const completedAppts = appts.filter((a) => a.status === "completed");
@@ -235,6 +244,39 @@ export default async function ClientDetailPage({
         <StatCard label="Total Spent"  value={formatMoney(totalSpent)} />
         <StatCard label="First Visit"  value={formatDate(firstVisit)} />
         <StatCard label="Last Visit"   value={formatDate(lastVisit)} />
+      </div>
+
+      {/* ── Intake Form ────────────────────────────────────────────────────── */}
+      <div className="bg-white border border-[#e8e0d8] rounded-xl px-6 py-5 mb-6">
+        <h2 className="font-[family-name:var(--font-cormorant)] italic text-[#044e77] text-xl mb-3">
+          Intake Form
+        </h2>
+        {intakeForm ? (
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/admin/intake/${intakeForm.id}`}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors
+                ${intakeForm.status === "acknowledged"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                  : intakeForm.status === "submitted"
+                    ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                    : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                }`}
+            >
+              {intakeForm.status === "acknowledged" ? "Acknowledged" : intakeForm.status === "submitted" ? "Submitted" : "Pending"}
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </Link>
+            {intakeForm.submitted_at && (
+              <span className="text-xs text-[#9a8f87]">
+                Submitted {formatDate(intakeForm.submitted_at)}
+              </span>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-[#c0b4ab] italic">No intake form on file.</p>
+        )}
       </div>
 
       {/* ── Appointment history ────────────────────────────────────────────── */}

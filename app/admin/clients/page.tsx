@@ -37,7 +37,7 @@ export default async function ClientsPage({
     fetchError = clientsErr.message;
   }
 
-  // ── Fetch appointment stats for matched clients ───────────────────────────
+  // ── Fetch appointment stats + intake forms for matched clients ───────────
   const clientIds = (clients ?? []).map((c) => c.id);
   let appts: Array<{
     client_id: string;
@@ -45,13 +45,21 @@ export default async function ClientsPage({
     amount_paid_cents: number;
     status: string;
   }> = [];
+  let intakeForms: Array<{ id: string; status: string; client_id: string }> = [];
 
   if (clientIds.length > 0) {
-    const { data } = await supabase()
-      .from("appointments")
-      .select("client_id, start_datetime, amount_paid_cents, status")
-      .in("client_id", clientIds);
-    appts = data ?? [];
+    const [apptsRes, intakeRes] = await Promise.all([
+      supabase()
+        .from("appointments")
+        .select("client_id, start_datetime, amount_paid_cents, status")
+        .in("client_id", clientIds),
+      supabase()
+        .from("intake_forms")
+        .select("id, status, client_id")
+        .in("client_id", clientIds),
+    ]);
+    appts = apptsRes.data ?? [];
+    intakeForms = intakeRes.data ?? [];
   }
 
   // ── Aggregate per client ──────────────────────────────────────────────────
@@ -79,17 +87,37 @@ export default async function ClientsPage({
     }
   }
 
+  // ── Build intake form map ─────────────────────────────────────────────────
+  const intakeMap = new Map<string, { id: string; status: string }>();
+  for (const f of intakeForms) {
+    // Keep the most recent / highest-priority one per client (acknowledged > submitted > pending)
+    const existing = intakeMap.get(f.client_id);
+    if (!existing) {
+      intakeMap.set(f.client_id, { id: f.id, status: f.status });
+    } else {
+      const priority: Record<string, number> = { acknowledged: 2, submitted: 1, pending: 0 };
+      if ((priority[f.status] ?? -1) > (priority[existing.status] ?? -1)) {
+        intakeMap.set(f.client_id, { id: f.id, status: f.status });
+      }
+    }
+  }
+
   // ── Build final list sorted by most recent visit desc ────────────────────
   const enriched: ClientRow[] = (clients ?? [])
-    .map((c) => ({
-      ...c,
-      ...(statsMap.get(c.id) ?? {
-        firstVisit: null,
-        lastVisit: null,
-        totalVisits: 0,
-        totalSpentCents: 0,
-      }),
-    }))
+    .map((c) => {
+      const intake = intakeMap.get(c.id);
+      return {
+        ...c,
+        ...(statsMap.get(c.id) ?? {
+          firstVisit: null,
+          lastVisit: null,
+          totalVisits: 0,
+          totalSpentCents: 0,
+        }),
+        intakeFormId: intake?.id,
+        intakeFormStatus: intake?.status,
+      };
+    })
     .sort((a, b) => {
       if (!a.lastVisit && !b.lastVisit) return 0;
       if (!a.lastVisit) return 1;

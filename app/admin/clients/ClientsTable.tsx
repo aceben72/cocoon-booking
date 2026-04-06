@@ -15,6 +15,8 @@ export interface ClientRow {
   lastVisit: string | null;
   totalVisits: number;
   totalSpentCents: number;
+  intakeFormId?: string;
+  intakeFormStatus?: string;
 }
 
 type SortKey = "name" | "totalVisits";
@@ -174,7 +176,7 @@ export function ClientsTable({
                   className="hover:bg-[#fdfcfb] cursor-pointer"
                   onClick={() => router.push(`/admin/clients/${client.id}`)}
                 >
-                  {/* Name + new badge */}
+                  {/* Name + badges */}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-[#1a1a1a]">
@@ -185,6 +187,19 @@ export function ClientsTable({
                                          bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
                           New
                         </span>
+                      )}
+                      {client.intakeFormId && client.intakeFormStatus !== "pending" && (
+                        <a
+                          href={`/admin/intake/${client.intakeFormId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0
+                            ${client.intakeFormStatus === "acknowledged"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-blue-50 text-blue-700 border-blue-200"
+                            }`}
+                        >
+                          {client.intakeFormStatus === "acknowledged" ? "Intake ✓" : "Intake ↗"}
+                        </a>
                       )}
                     </div>
                     {/* Email visible on small screens where the column is hidden */}

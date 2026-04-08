@@ -133,5 +133,167 @@ export async function GET(request: NextRequest) {
   }
 
   console.log(`[cron/reminders] done — ${sent} reminder(s) sent, ${errors} error(s)`);
-  return NextResponse.json({ ok: true, sent, errors, window: { start: windowStart, end: windowEnd } });
+
+  // ── Follow-up emails (completed appointments, ~24h after end_datetime) ────
+  const followupWindowStart = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString();
+  const followupWindowEnd   = new Date(now.getTime() - 23 * 60 * 60 * 1000).toISOString();
+
+  console.log(`[cron/reminders] follow-up window: ${followupWindowStart} → ${followupWindowEnd}`);
+
+  let followupSent   = 0;
+  let followupErrors = 0;
+
+  const { data: completedAppts, error: completedErr } = await supabase()
+    .from("appointments")
+    .select(`
+      id,
+      services ( name ),
+      clients  ( first_name, email )
+    `)
+    .eq("status", "completed")
+    .is("followup_sent_at", null)
+    .gte("end_datetime", followupWindowStart)
+    .lte("end_datetime", followupWindowEnd);
+
+  if (completedErr) {
+    console.error("[cron/reminders] follow-up query failed:", completedErr.message);
+  } else {
+    const EXCLUDE_SERVICES = ["Make-Up Class", "Mother Daughter Make-Up Class"];
+    const resendKey = process.env.RESEND_API_KEY;
+
+    for (const appt of completedAppts ?? []) {
+      const client  = appt.clients  as unknown as { first_name: string; email: string } | null;
+      const service = appt.services as unknown as { name: string } | null;
+
+      if (!service || EXCLUDE_SERVICES.includes(service.name)) {
+        console.log(`[cron/reminders] follow-up ${appt.id} — skipped (make-up class)`);
+        continue;
+      }
+
+      if (!client?.email) {
+        console.log(`[cron/reminders] follow-up ${appt.id} — no client email, marking sent to prevent retry`);
+        await supabase()
+          .from("appointments")
+          .update({ followup_sent_at: now.toISOString() })
+          .eq("id", appt.id);
+        continue;
+      }
+
+      if (!resendKey) {
+        console.warn("[cron/reminders] RESEND_API_KEY not set — skipping follow-up emails");
+        break;
+      }
+
+      try {
+        console.log(`[cron/reminders] follow-up ${appt.id} — sending to ${client.email}`);
+        const response = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: "Cocoon Skin & Beauty <amanda@cocoonskinandbeauty.com.au>",
+            reply_to: ["amanda@cocoonskinandbeauty.com.au"],
+            to: [client.email],
+            subject: `How did you go, ${client.first_name}? ✨`,
+            html: buildFollowUpEmail({ firstName: client.first_name, serviceName: service.name }),
+          }),
+        });
+
+        const result = await response.json() as { id?: string; name?: string; message?: string };
+        if (response.ok) {
+          await supabase()
+            .from("appointments")
+            .update({ followup_sent_at: now.toISOString() })
+            .eq("id", appt.id);
+          console.log(`[cron/reminders] follow-up ${appt.id} — sent (Resend id: ${result.id})`);
+          followupSent++;
+        } else {
+          console.error(`[cron/reminders] follow-up ${appt.id} — Resend error:`, JSON.stringify(result));
+          followupErrors++;
+        }
+      } catch (err) {
+        console.error(`[cron/reminders] follow-up ${appt.id} failed:`, err);
+        followupErrors++;
+      }
+    }
+  }
+
+  console.log(`[cron/reminders] follow-ups done — ${followupSent} sent, ${followupErrors} error(s)`);
+
+  return NextResponse.json({
+    ok: true,
+    reminders: { sent, errors },
+    followups: { sent: followupSent, errors: followupErrors },
+    windows: {
+      reminders: { start: windowStart, end: windowEnd },
+      followups:  { start: followupWindowStart, end: followupWindowEnd },
+    },
+  });
+}
+
+function buildFollowUpEmail({ firstName, serviceName }: { firstName: string; serviceName: string }) {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f8f5f2;font-family:'Jost',Arial,sans-serif;font-weight:300;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f5f2;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+        <tr>
+          <td align="center" style="background:#044e77;padding:32px 24px;border-radius:12px 12px 0 0;">
+            <img src="https://mcusercontent.com/644ef8c7fbae49e3b1826dda3/images/1b7a3cb7-18c0-682d-62bf-921900b53c86.png"
+                 alt="Cocoon Skin & Beauty" height="48" style="display:block;">
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#ffffff;padding:40px 32px;border-radius:0 0 12px 12px;">
+            <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;font-weight:400;
+                       font-style:italic;color:#044e77;margin:0 0 8px;">
+              How did you go, ${firstName}? ✨
+            </h1>
+            <p style="color:#7a6f68;font-size:15px;margin:0 0 24px;line-height:1.6;">
+              Thank you so much for visiting Cocoon — it was lovely having you in.
+              I hope you're loving the results from your ${serviceName}.
+            </p>
+            <p style="color:#7a6f68;font-size:15px;margin:0 0 24px;line-height:1.6;">
+              If you have any questions or concerns about your treatment, please don't hesitate to get in touch.
+              Simply reply to this email and I'll get back to you.
+            </p>
+            <p style="color:#7a6f68;font-size:15px;margin:0 0 32px;line-height:1.6;">
+              If you enjoyed your experience, I'd be so grateful if you could take a moment to leave a review —
+              it makes a huge difference to a small business like mine.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:40px;">
+              <tr><td align="center">
+                <a href="https://g.page/r/CRCF4L0zs2HmEBM/review"
+                   style="display:inline-block;background:#fbb040;color:#044e77;font-size:15px;
+                          font-weight:600;text-decoration:none;padding:14px 36px;border-radius:8px;">
+                  Leave a Review
+                </a>
+              </td></tr>
+            </table>
+            <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 2px;">Warm regards,</p>
+            <p style="color:#1a1a1a;font-size:14px;font-weight:500;line-height:1.7;margin:0 0 2px;">Amanda</p>
+            <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">Cocoon Skin &amp; Beauty</p>
+            <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
+                      border-top:1px solid #f0ebe4;padding-top:20px;">
+              Cocoon Skin &amp; Beauty · 16 Bunderoo Circuit, Pimpama QLD 4209
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:24px 0;">
+            <p style="font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;
+                      color:#b0a499;font-size:16px;margin:0;">
+              Relax. Revive. Restore.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`.trim();
 }

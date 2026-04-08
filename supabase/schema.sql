@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   amount_cents      INTEGER NOT NULL CHECK (amount_cents > 0),
   amount_paid_cents INTEGER NOT NULL CHECK (amount_paid_cents > 0),
   notes             TEXT,
+  followup_sent_at  TIMESTAMPTZ,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (end_datetime > start_datetime)

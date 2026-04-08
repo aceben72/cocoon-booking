@@ -29,7 +29,8 @@ async function sendEmail(to: string, subject: string, html: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "Cocoon Skin & Beauty <hello@cocoonskinandbeauty.com.au>",
+      from: "Cocoon Skin & Beauty <amanda@cocoonskinandbeauty.com.au>",
+      reply_to: ["amanda@cocoonskinandbeauty.com.au"],
       to,
       subject,
       html,

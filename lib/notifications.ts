@@ -325,7 +325,7 @@ async function sendReminderSMS(
   displayTime: string,
 ) {
   // Primary template — aim for ≤160 chars
-  const primary = `Hi ${client.first_name}, a reminder your ${serviceName} at Cocoon is in 2 days — ${displayDay} ${displayShortDate} at ${displayTime}. Questions? Reply to this message. – Amanda`;
+  const primary = `Hi ${client.first_name}, a reminder your ${serviceName} at Cocoon is in 2 days — ${displayDay} ${displayShortDate} at ${displayTime}. If you need to make changes you must contact me ASAP. Changes with less than 48 hours notice can affect your deposit. – Amanda`;
   // Fallback for long service names
   const fallback = `Hi ${client.first_name}, reminder: ${serviceName} at Cocoon — ${displayDay} ${displayShortDate} at ${displayTime}. – Amanda`;
 

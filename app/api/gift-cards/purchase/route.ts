@@ -181,7 +181,7 @@ async function sendGiftCardEmails(params: {
   // Recipient email
   await resend.emails.send({
     from: "Cocoon Skin & Beauty <amanda@cocoonskinandbeauty.com.au>",
-    reply_to: "amanda@cocoonskinandbeauty.com.au",
+    replyTo: "amanda@cocoonskinandbeauty.com.au",
     to: recipient_email,
     subject: "You've received a Cocoon gift card 🎁",
     html: buildRecipientEmail({ code, valueDisplay, purchaser_name, recipient_name, personal_message }),
@@ -190,7 +190,7 @@ async function sendGiftCardEmails(params: {
   // Purchaser confirmation email
   await resend.emails.send({
     from: "Cocoon Skin & Beauty <amanda@cocoonskinandbeauty.com.au>",
-    reply_to: "amanda@cocoonskinandbeauty.com.au",
+    replyTo: "amanda@cocoonskinandbeauty.com.au",
     to: purchaser_email,
     subject: "Your Cocoon gift card purchase is confirmed ✨",
     html: buildPurchaserEmail({ code, valueDisplay, purchaser_name, recipient_name, recipient_email }),

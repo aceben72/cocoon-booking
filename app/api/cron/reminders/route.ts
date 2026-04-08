@@ -274,9 +274,18 @@ function buildFollowUpEmail({ firstName, serviceName }: { firstName: string; ser
                 </a>
               </td></tr>
             </table>
-            <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 2px;">Warm regards,</p>
-            <p style="color:#1a1a1a;font-size:14px;font-weight:500;line-height:1.7;margin:0 0 2px;">Amanda</p>
-            <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">Cocoon Skin &amp; Beauty</p>
+            <table cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+              <tr>
+                <td style="vertical-align:middle;padding-right:16px;">
+                  <img src="https://mcusercontent.com/644ef8c7fbae49e3b1826dda3/images/8dd53e7d-dbec-13f1-0e2f-d85de8e4d16a.jpeg" alt="Amanda" width="64" height="64" style="display:block;border-radius:50%;object-fit:cover;border:2px solid #f0ebe4;">
+                </td>
+                <td style="vertical-align:middle;">
+                  <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 2px;">Warm regards,</p>
+                  <p style="color:#1a1a1a;font-size:14px;font-weight:500;line-height:1.7;margin:0 0 2px;">Amanda</p>
+                  <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0;">Cocoon Skin &amp; Beauty</p>
+                </td>
+              </tr>
+            </table>
             <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
                       border-top:1px solid #f0ebe4;padding-top:20px;">
               Cocoon Skin &amp; Beauty · 16 Bunderoo Circuit, Pimpama QLD 4209

@@ -344,11 +344,12 @@ export async function POST(request: NextRequest) {
       const intakeToken = randomBytes(32).toString("hex");
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+      const intakeExpiresAt = new Date(new Date(startISO).getTime() + 4 * 60 * 60 * 1000).toISOString();
       const { error: intakeErr } = await supabase.from("intake_forms").insert({
         appointment_id: appointment.id,
         client_id: clientId,
         token: intakeToken,
-        expires_at: startISO,
+        expires_at: intakeExpiresAt,
         status: "pending",
       });
 

@@ -150,11 +150,12 @@ export async function POST(request: NextRequest) {
   if (isNewClient && !INTAKE_EXCLUDED_SERVICES.includes(service.name)) {
     try {
       const intakeToken = randomBytes(32).toString("hex");
+      const intakeExpiresAt = new Date(new Date(startISO).getTime() + 4 * 60 * 60 * 1000).toISOString();
       const { error: intakeErr } = await db.from("intake_forms").insert({
         appointment_id: appointment.id,
         client_id:      clientId,
         token:          intakeToken,
-        expires_at:     startISO,
+        expires_at:     intakeExpiresAt,
         status:         "pending",
       });
       if (intakeErr) {

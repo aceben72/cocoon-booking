@@ -143,6 +143,19 @@ export async function POST(
       .eq("id", appointment.client_id);
   }
 
+  // ── Look up intake form URL (created at booking time for new clients) ────
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  let intakeFormUrl: string | null = null;
+  const { data: intakeForm } = await db
+    .from("intake_forms")
+    .select("token")
+    .eq("appointment_id", appointment.id)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (intakeForm?.token) {
+    intakeFormUrl = `${appUrl}/intake/${intakeForm.token}`;
+  }
+
   // ── Send confirmation notifications ──────────────────────────────────────
   // Awaited before returning so Vercel does not freeze the execution context
   // before the outbound Resend/ClickSend requests complete.
@@ -159,6 +172,7 @@ export async function POST(
       priceCents,
       amountPaidCents,
       startISO: appointment.start_datetime,
+      intakeFormUrl,
       client: {
         first_name: clientData.first_name,
         last_name: clientData.last_name,

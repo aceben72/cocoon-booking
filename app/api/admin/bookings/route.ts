@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
 import { sendPaymentRequest } from "@/lib/notifications";
@@ -143,6 +143,27 @@ export async function POST(request: NextRequest) {
     process.env.NEXT_PUBLIC_APP_URL ??
     (request.headers.get("origin") || "http://localhost:3000");
   const paymentUrl = `${appUrl}/pay/${token}`;
+
+  // Create intake form for new clients (excluding make-up classes)
+  const INTAKE_EXCLUDED_SERVICES = ["Make-Up Class", "Mother Daughter Make-Up Class"];
+  const isNewClient = !existingClient;
+  if (isNewClient && !INTAKE_EXCLUDED_SERVICES.includes(service.name)) {
+    try {
+      const intakeToken = randomBytes(32).toString("hex");
+      const { error: intakeErr } = await db.from("intake_forms").insert({
+        appointment_id: appointment.id,
+        client_id:      clientId,
+        token:          intakeToken,
+        expires_at:     startISO,
+        status:         "pending",
+      });
+      if (intakeErr) {
+        console.error("[admin/bookings] intake form insert failed:", intakeErr);
+      }
+    } catch (intakeEx) {
+      console.error("[admin/bookings] intake form insert threw:", intakeEx);
+    }
+  }
 
   // Send payment request notifications (fire & forget)
   sendPaymentRequest({

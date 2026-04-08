@@ -77,11 +77,12 @@ export interface AppointmentNotifyParams {
   priceCents: number;
   amountPaidCents: number;
   startISO: string;
+  intakeFormUrl?: string | null;
   client: NotifyClient;
 }
 
 export async function sendAppointmentConfirmation(params: AppointmentNotifyParams) {
-  const { serviceName, durationMinutes, priceCents, amountPaidCents, startISO, client } = params;
+  const { serviceName, durationMinutes, priceCents, amountPaidCents, startISO, intakeFormUrl, client } = params;
   const displayDate = aestDate(startISO);
   const displayTime = aestTime(startISO);
   const mins = durationMinutes % 60;
@@ -95,7 +96,7 @@ export async function sendAppointmentConfirmation(params: AppointmentNotifyParam
     await sendEmail(
       client.email,
       "Your Cocoon appointment is confirmed ✨",
-      buildAppointmentConfirmationEmail({ client, serviceName, displayDate, displayTime, duration, amountPaid, outstanding }),
+      buildAppointmentConfirmationEmail({ client, serviceName, displayDate, displayTime, duration, amountPaid, outstanding, intakeFormUrl: intakeFormUrl ?? null }),
     );
     console.log("[notifications] appointment confirmation email sent to:", client.email);
   } catch (err) {
@@ -480,6 +481,7 @@ function buildAppointmentConfirmationEmail(p: {
   duration: string;
   amountPaid: string;
   outstanding: number;
+  intakeFormUrl?: string | null;
 }) {
   return emailWrapper(`
     <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;font-weight:400;
@@ -518,6 +520,24 @@ function buildAppointmentConfirmationEmail(p: {
       Cocoon Skin &amp; Beauty<br>
       16 Bunderoo Circuit, Pimpama QLD 4209
     </p>
+    ${p.intakeFormUrl ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:32px;">
+      <tr><td>
+        <p style="color:#1a1a1a;font-size:14px;font-weight:500;margin:0 0 8px;">
+          Complete your consultation form
+        </p>
+        <p style="color:#7a6f68;font-size:13px;line-height:1.6;margin:0 0 16px;">
+          As a new client, please complete your pre-appointment consultation form before you arrive.
+          It only takes a few minutes and helps Amanda personalise your treatment.
+        </p>
+        <a href="${p.intakeFormUrl}"
+           style="display:inline-block;background:#044e77;color:#ffffff;font-size:14px;
+                  font-weight:500;text-decoration:none;padding:12px 28px;border-radius:8px;">
+          Complete Intake Form →
+        </a>
+      </td></tr>
+    </table>
+    ` : ""}
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
       Need to reschedule or cancel? Please contact Amanda at least 48 hours before your appointment.

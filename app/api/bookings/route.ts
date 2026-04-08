@@ -338,7 +338,8 @@ export async function POST(request: NextRequest) {
   // confirmation email from sending below.
   let intakeFormUrl: string | null = null;
 
-  if (client.is_new_client) {
+  const INTAKE_EXCLUDED_SERVICES = ["Make-Up Class", "Mother Daughter Make-Up Class"];
+  if (client.is_new_client && !INTAKE_EXCLUDED_SERVICES.includes(service.name)) {
     try {
       const intakeToken = randomBytes(32).toString("hex");
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";

@@ -4,7 +4,9 @@ export type ServiceCategory =
   | "brow-treatments"
   | "facials"
   | "led-light-treatments"
-  | "make-up";
+  | "make-up"
+  | "treatment-plans"
+  | "admin-only";
 
 export interface Service {
   id: string;
@@ -13,7 +15,10 @@ export interface Service {
   duration_minutes: number;
   padding_minutes: number;
   price_cents: number;
+  deposit_cents?: number;     // if set, overrides the default $50 deposit in the client booking flow
+  description?: string;       // shown on service card and booking summary
   active: boolean;
+  admin_only?: boolean;       // if true, never shown in the client-facing booking flow
 }
 
 export interface AvailabilityRule {

@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { randomUUID, randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
-import { sendPaymentRequest } from "@/lib/notifications";
+import { sendPaymentRequest, sendAppointmentConfirmation } from "@/lib/notifications";
 
 function supabase() {
   return createClient(
@@ -21,9 +21,10 @@ export async function POST(request: NextRequest) {
     lastName?: string;
     email?: string;
     mobile?: string;
+    noCharge?: boolean;
   };
 
-  const { serviceId, date, time, firstName, lastName, email, mobile: rawMobile } = body;
+  const { serviceId, date, time, firstName, lastName, email, mobile: rawMobile, noCharge } = body;
 
   if (!serviceId || !date || !time || !firstName || !lastName || !email || !rawMobile) {
     return NextResponse.json({ error: "All fields are required" }, { status: 400 });
@@ -110,25 +111,39 @@ export async function POST(request: NextRequest) {
     clientId = newClient.id as string;
   }
 
-  // Generate payment link token (expires 48 h from now)
-  const token = randomUUID();
-  const expiresAt = new Date(Date.now() + 48 * 60 * 60_000).toISOString();
+  const isNoCharge = noCharge === true || service.admin_only === true;
 
-  // Create appointment with pending_payment status
+  // Build appointment insert payload
+  const apptPayload = isNoCharge
+    ? {
+        service_id:       dbService.id,
+        client_id:        clientId,
+        start_datetime:   startISO,
+        end_datetime:     endISO,
+        status:           "confirmed",
+        amount_cents:     0,
+        amount_paid_cents: 0,
+      }
+    : (() => {
+        const token    = randomUUID();
+        const expiresAt = new Date(Date.now() + 48 * 60 * 60_000).toISOString();
+        return {
+          service_id:                      dbService.id,
+          client_id:                       clientId,
+          start_datetime:                  startISO,
+          end_datetime:                    endISO,
+          status:                          "pending_payment",
+          amount_cents:                    service.price_cents,
+          amount_paid_cents:               0,
+          payment_link_token:              token,
+          payment_link_token_expires_at:   expiresAt,
+        };
+      })();
+
   const { data: appointment, error: apptErr } = await db
     .from("appointments")
-    .insert({
-      service_id: dbService.id,
-      client_id: clientId,
-      start_datetime: startISO,
-      end_datetime: endISO,
-      status: "pending_payment",
-      amount_cents: service.price_cents,
-      amount_paid_cents: 0,
-      payment_link_token: token,
-      payment_link_token_expires_at: expiresAt,
-    })
-    .select("id")
+    .insert(apptPayload)
+    .select("id, payment_link_token")
     .single();
 
   if (apptErr || !appointment) {
@@ -138,18 +153,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Build payment URL
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (request.headers.get("origin") || "http://localhost:3000");
-  const paymentUrl = `${appUrl}/pay/${token}`;
 
-  // Create intake form for new clients (excluding make-up classes)
+  // Create intake form for new clients (excluding make-up classes and no-charge/internal services)
   const INTAKE_EXCLUDED_SERVICES = ["Make-Up Class", "Mother Daughter Make-Up Class"];
   const isNewClient = !existingClient;
-  if (isNewClient && !INTAKE_EXCLUDED_SERVICES.includes(service.name)) {
+  let intakeFormUrl: string | null = null;
+  if (isNewClient && !isNoCharge && !INTAKE_EXCLUDED_SERVICES.includes(service.name)) {
     try {
-      const intakeToken = randomBytes(32).toString("hex");
+      const intakeToken    = randomBytes(32).toString("hex");
       const intakeExpiresAt = new Date(new Date(startISO).getTime() + 4 * 60 * 60 * 1000).toISOString();
       const { error: intakeErr } = await db.from("intake_forms").insert({
         appointment_id: appointment.id,
@@ -160,13 +174,37 @@ export async function POST(request: NextRequest) {
       });
       if (intakeErr) {
         console.error("[admin/bookings] intake form insert failed:", intakeErr);
+      } else {
+        intakeFormUrl = `${appUrl}/intake/${intakeToken}`;
       }
     } catch (intakeEx) {
       console.error("[admin/bookings] intake form insert threw:", intakeEx);
     }
   }
 
-  // Send payment request notifications (fire & forget)
+  if (isNoCharge) {
+    // Confirmed immediately — send standard confirmation email/SMS
+    sendAppointmentConfirmation({
+      serviceName:     service.name,
+      durationMinutes: service.duration_minutes,
+      priceCents:      0,
+      amountPaidCents: 0,
+      startISO,
+      intakeFormUrl,
+      client: { first_name: firstName, last_name: lastName, email, mobile },
+    }).catch(console.error);
+
+    return NextResponse.json({
+      appointmentId: appointment.id,
+      service: service.name,
+      startISO,
+      noCharge: true,
+    }, { status: 201 });
+  }
+
+  // Paid flow — send payment request
+  const paymentUrl = `${appUrl}/pay/${appointment.payment_link_token}`;
+
   sendPaymentRequest({
     serviceName: service.name,
     startISO,

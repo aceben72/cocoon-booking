@@ -1402,7 +1402,14 @@ export function AppointmentTable({
                         <div className="text-[#7a6f68] text-xs">{appt.clients?.email}</div>
                       </td>
                       <td className="px-4 py-3 text-[#1a1a1a]">
-                        <div>{appt.services?.name ?? "—"}</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{appt.services?.name ?? "—"}</span>
+                          {appt.amount_cents === 0 && appt.status !== "cancelled" && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-50 text-violet-700 border border-violet-200">
+                              Internal
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[#7a6f68] text-xs">{appt.services?.duration_minutes} min</div>
                       </td>
                       <td className="px-4 py-3 text-[#1a1a1a] whitespace-nowrap">

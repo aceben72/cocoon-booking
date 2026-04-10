@@ -14,7 +14,9 @@ for (let h = 8; h <= 19; h++) {
   }
 }
 
-const activeServices = SERVICES.filter((s) => s.active);
+// Admin sees all active services, including admin-only ones
+const activeServices    = SERVICES.filter((s) => s.active && !s.admin_only);
+const adminOnlyServices = SERVICES.filter((s) => s.active && s.admin_only);
 
 function todayAEST() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Brisbane" }).format(new Date());
@@ -26,6 +28,8 @@ interface Props {
   initialDate?: string;
 }
 
+const allAdminServices = [...activeServices, ...adminOnlyServices];
+
 export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   const [serviceId, setServiceId]   = useState(activeServices[0]?.id ?? "");
   const [date, setDate]             = useState(initialDate ?? todayAEST());
@@ -34,13 +38,16 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   const [lastName, setLastName]     = useState("");
   const [email, setEmail]           = useState("");
   const [mobile, setMobile]         = useState("");
+  const [noCharge, setNoCharge]     = useState(false);
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState<string | null>(null);
-  const [success, setSuccess]       = useState<{ name: string; paymentUrl: string } | null>(null);
+  const [success, setSuccess]       = useState<{ name: string; paymentUrl?: string; noCharge?: boolean } | null>(null);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [conflictChecking, setConflictChecking] = useState(false);
 
-  const selectedService = activeServices.find((s) => s.id === serviceId);
+  const selectedService = allAdminServices.find((s) => s.id === serviceId);
+  // Auto-enable no-charge for admin-only (zero-price) services
+  const isAdminOnlyService = selectedService?.admin_only === true;
 
   // ── Conflict check ──────────────────────────────────────────────────────
   // Fires 400 ms after date/time/service changes to avoid hammering the API.
@@ -94,10 +101,11 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
     setSaving(true);
 
     try {
+      const effectiveNoCharge = noCharge || isAdminOnlyService;
       const res = await fetch("/api/admin/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceId, date, time, firstName, lastName, email, mobile }),
+        body: JSON.stringify({ serviceId, date, time, firstName, lastName, email, mobile, noCharge: effectiveNoCharge }),
       });
       const data = await res.json() as { error?: string; paymentUrl?: string; service?: string };
 
@@ -106,7 +114,7 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
         return;
       }
 
-      setSuccess({ name: `${firstName} ${lastName}`, paymentUrl: data.paymentUrl ?? "" });
+      setSuccess({ name: `${firstName} ${lastName}`, paymentUrl: data.paymentUrl, noCharge: effectiveNoCharge });
       onCreated();
     } catch {
       setError("An unexpected error occurred");
@@ -122,30 +130,38 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
           <span className="text-emerald-500 text-xl mt-0.5">✓</span>
           <div className="flex-1">
             <p className="font-medium text-emerald-800 mb-1">Booking created for {success.name}</p>
-            <p className="text-sm text-emerald-700 mb-3">
-              A payment request has been sent via email and SMS. The link expires in 48 hours.
-            </p>
-            <div className="flex items-center gap-2 flex-wrap">
-              <a
-                href={success.paymentUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-mono bg-white border border-emerald-200 rounded px-2 py-1 text-emerald-800 break-all"
-              >
-                {success.paymentUrl}
-              </a>
-              <button
-                onClick={() => navigator.clipboard.writeText(success.paymentUrl)}
-                className="text-xs px-2 py-1 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-100 transition-colors whitespace-nowrap"
-              >
-                Copy link
-              </button>
-            </div>
+            {success.noCharge ? (
+              <p className="text-sm text-emerald-700">
+                Booking confirmed. A confirmation email and SMS have been sent.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-emerald-700 mb-3">
+                  A payment request has been sent via email and SMS. The link expires in 48 hours.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <a
+                    href={success.paymentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-mono bg-white border border-emerald-200 rounded px-2 py-1 text-emerald-800 break-all"
+                  >
+                    {success.paymentUrl}
+                  </a>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(success.paymentUrl!)}
+                    className="text-xs px-2 py-1 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-100 transition-colors whitespace-nowrap"
+                  >
+                    Copy link
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div className="flex gap-2 mt-4">
           <button
-            onClick={() => { setSuccess(null); setFirstName(""); setLastName(""); setEmail(""); setMobile(""); }}
+            onClick={() => { setSuccess(null); setFirstName(""); setLastName(""); setEmail(""); setMobile(""); setNoCharge(false); }}
             className="text-sm px-4 py-2 rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
             Create another
@@ -206,6 +222,15 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
                 </optgroup>
               );
             })}
+            {adminOnlyServices.length > 0 && (
+              <optgroup label="── Internal ──">
+                {adminOnlyServices.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} — internal
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
           {selectedService && (
             <p className="text-xs text-[#9a8f87] mt-1">
@@ -316,6 +341,34 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
         </div>
       )}
 
+      {/* No-charge toggle — only shown for normal (non-admin-only) services */}
+      {!isAdminOnlyService && (
+        <label className="mt-4 flex items-center gap-3 cursor-pointer select-none w-fit">
+          <div className="relative">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={noCharge}
+              onChange={(e) => setNoCharge(e.target.checked)}
+            />
+            <div className="w-10 h-6 rounded-full bg-[#ddd8d2] peer-checked:bg-amber-400 transition-colors" />
+            <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+          </div>
+          <span className="text-sm text-[#5a504a]">No charge / internal booking</span>
+        </label>
+      )}
+
+      {(noCharge || isAdminOnlyService) && (
+        <div className="mt-3 flex items-start gap-2.5 bg-amber-50 border border-amber-300 rounded-lg px-4 py-3">
+          <svg className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <p className="text-sm font-medium text-amber-800">
+            No payment will be collected — booking will be confirmed immediately.
+          </p>
+        </div>
+      )}
+
       {error && (
         <div className="mt-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
           {error}
@@ -326,10 +379,17 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
         <button
           type="submit"
           disabled={saving}
-          className="px-5 py-2.5 rounded-lg bg-[#044e77] text-white text-sm font-medium
-                     hover:bg-[#033d5c] disabled:opacity-50 transition-colors"
+          className={`px-5 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${
+            noCharge || isAdminOnlyService
+              ? "bg-amber-500 hover:bg-amber-600"
+              : "bg-[#044e77] hover:bg-[#033d5c]"
+          }`}
         >
-          {saving ? "Creating…" : "Create booking & send payment link"}
+          {saving
+            ? "Creating…"
+            : noCharge || isAdminOnlyService
+            ? "Create booking (no charge)"
+            : "Create booking & send payment link"}
         </button>
         <button
           type="button"

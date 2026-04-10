@@ -25,6 +25,12 @@ export const CATEGORY_META: CategoryMeta[] = [
     description: "Professional make-up application and personalised make-up coaching.",
     icon: "✦",
   },
+  {
+    id: "treatment-plans",
+    label: "Treatment Plans",
+    description: "Multi-step professional treatment systems targeting specific skin concerns, tailored to your skin's needs.",
+    icon: "✦",
+  },
 ];
 
 // Seed data — matches what will be in Supabase once schema is applied
@@ -49,4 +55,40 @@ export const SERVICES: Service[] = [
   // Make-Up
   { id: "professional-makeup", category: "make-up", name: "Professional Make-Up Application", duration_minutes: 60, padding_minutes: 30, price_cents: 13000, active: true },
   { id: "makeup-class", category: "make-up", name: "Personal Make Up Class", duration_minutes: 90, padding_minutes: 30, price_cents: 15900, active: true },
+
+  // Treatment Plans (client-facing)
+  {
+    id: "agebiotic-system",
+    category: "treatment-plans",
+    name: "Agebiotic System",
+    duration_minutes: 75,
+    padding_minutes: 30,
+    price_cents: 97400,
+    deposit_cents: 52700,
+    description: "Specifically for those with mature skin, deeper wrinkles and dark spots being the main concerns.",
+    active: true,
+  },
+  {
+    id: "purity-herbal-peeling",
+    category: "treatment-plans",
+    name: "Purity Herbal Peeling System",
+    duration_minutes: 75,
+    padding_minutes: 30,
+    price_cents: 89400,
+    deposit_cents: 52700,
+    description: "Specifically for those with acne skin or excess oiliness in both teenage and mature age skin.",
+    active: true,
+  },
+
+  // Admin-only services (never visible to clients)
+  {
+    id: "treatment-plan-facial",
+    category: "admin-only",
+    name: "Treatment Plan Facial",
+    duration_minutes: 60,
+    padding_minutes: 30,
+    price_cents: 0,
+    active: true,
+    admin_only: true,
+  },
 ];

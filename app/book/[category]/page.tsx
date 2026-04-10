@@ -19,7 +19,7 @@ export default async function SelectServicePage({ params }: Props) {
   if (!meta) notFound();
 
   const services = SERVICES.filter(
-    (s) => s.category === (category as ServiceCategory) && s.active,
+    (s) => s.category === (category as ServiceCategory) && s.active && !s.admin_only,
   );
 
   return (
@@ -63,6 +63,11 @@ export default async function SelectServicePage({ params }: Props) {
                 <p className="text-sm text-[#9a8f87] font-light mt-0.5">
                   {formatDuration(service.duration_minutes)}
                 </p>
+                {service.description && (
+                  <p className="text-xs text-[#b0a499] font-light mt-1.5 max-w-sm">
+                    {service.description}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-4 flex-shrink-0 ml-4">
                 <span className="text-[#044e77] font-medium text-lg">

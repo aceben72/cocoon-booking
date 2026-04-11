@@ -20,6 +20,10 @@ const jost = Jost({
 export const metadata: Metadata = {
   title: "Book an Appointment | Cocoon Skin & Beauty",
   description: "Book your beauty appointment with Cocoon Skin & Beauty — Pimpama, QLD. Brow treatments, facials, LED therapy, and make-up services.",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({

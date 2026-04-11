@@ -69,6 +69,7 @@ interface Appointment {
     is_new_client: boolean;
   } | null;
   intake_forms: { id: string; status: string; token: string }[];
+  facial_package_redemptions: { id: string }[];
 }
 
 const STATUS_COLOURS: Record<string, string> = {
@@ -1425,11 +1426,17 @@ export function AppointmentTable({
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="font-medium text-[#1a1a1a]">{formatPrice(appt.amount_paid_cents)}</div>
-                        {appt.amount_paid_cents < appt.amount_cents && (
-                          <div className="text-xs text-amber-600 font-medium whitespace-nowrap">
-                            {formatPrice(appt.amount_cents - appt.amount_paid_cents)} outstanding
-                          </div>
+                        {appt.facial_package_redemptions?.length > 0 ? (
+                          <div className="text-xs font-medium text-emerald-700 whitespace-nowrap">Facial Package</div>
+                        ) : (
+                          <>
+                            <div className="font-medium text-[#1a1a1a]">{formatPrice(appt.amount_paid_cents)}</div>
+                            {appt.amount_paid_cents < appt.amount_cents && (
+                              <div className="text-xs text-amber-600 font-medium whitespace-nowrap">
+                                {formatPrice(appt.amount_cents - appt.amount_paid_cents)} outstanding
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
                       <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
@@ -1525,17 +1532,26 @@ export function AppointmentTable({
                                 <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Service Total</div>
                                 <div>{formatPrice(appt.amount_cents)}</div>
                               </div>
-                              <div>
-                                <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Paid</div>
-                                <div>{formatPrice(appt.amount_paid_cents)}</div>
-                              </div>
-                              {appt.amount_paid_cents < appt.amount_cents && (
+                              {appt.facial_package_redemptions?.length > 0 ? (
                                 <div>
-                                  <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Outstanding</div>
-                                  <div className="text-amber-600 font-medium">
-                                    {formatPrice(appt.amount_cents - appt.amount_paid_cents)}
-                                  </div>
+                                  <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Payment</div>
+                                  <div className="text-emerald-700 font-medium">Facial Package</div>
                                 </div>
+                              ) : (
+                                <>
+                                  <div>
+                                    <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Paid</div>
+                                    <div>{formatPrice(appt.amount_paid_cents)}</div>
+                                  </div>
+                                  {appt.amount_paid_cents < appt.amount_cents && (
+                                    <div>
+                                      <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Outstanding</div>
+                                      <div className="text-amber-600 font-medium">
+                                        {formatPrice(appt.amount_cents - appt.amount_paid_cents)}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
                               )}
                               <div>
                                 <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Square Payment ID</div>

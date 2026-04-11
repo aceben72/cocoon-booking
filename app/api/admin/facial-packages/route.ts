@@ -22,13 +22,16 @@ export async function GET() {
 
   // Fetch redemptions with appointment start time for each package
   const packageIds = (packages ?? []).map((p) => p.id);
-  let redemptions: {
+
+  type RedemptionRow = {
     id: string;
     facial_package_id: string;
     appointment_id: string;
     redeemed_at: string;
     appointments: { start_datetime: string } | null;
-  }[] = [];
+  };
+
+  let redemptions: RedemptionRow[] = [];
 
   if (packageIds.length > 0) {
     const { data: redemptionRows } = await db
@@ -37,7 +40,16 @@ export async function GET() {
       .in("facial_package_id", packageIds)
       .order("redeemed_at", { ascending: false });
 
-    redemptions = (redemptionRows ?? []) as typeof redemptions;
+    // Supabase returns joined relations as arrays; normalise to object | null
+    redemptions = (redemptionRows ?? []).map((r) => ({
+      id: r.id as string,
+      facial_package_id: r.facial_package_id as string,
+      appointment_id: r.appointment_id as string,
+      redeemed_at: r.redeemed_at as string,
+      appointments: Array.isArray(r.appointments)
+        ? (r.appointments[0] as { start_datetime: string } | undefined) ?? null
+        : (r.appointments as { start_datetime: string } | null),
+    }));
   }
 
   // Attach redemptions to their package

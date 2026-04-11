@@ -417,6 +417,7 @@ export async function POST(request: NextRequest) {
     client: { ...client, mobile },
     startISO,
     amountPaidCents,
+    paidViaFacialPackage: facialPackagePaidInFull,
     isNewClient: !!client.is_new_client,
     intakeFormUrl,
   }).catch(console.error);
@@ -428,6 +429,7 @@ export async function POST(request: NextRequest) {
     amountCents: service.price_cents,
     amountPaidCents,
     discountCents: totalDiscountCents,
+    paidViaFacialPackage: facialPackagePaidInFull,
     isNewClient: !!client.is_new_client,
     client: {
       first_name: client.first_name,
@@ -443,10 +445,11 @@ async function sendConfirmationNotifications(params: {
   client: { first_name: string; last_name: string; email: string; mobile: string };
   startISO: string;
   amountPaidCents: number;
+  paidViaFacialPackage: boolean;
   isNewClient: boolean;
   intakeFormUrl: string | null;
 }) {
-  const { service, client, startISO, amountPaidCents, isNewClient, intakeFormUrl } = params;
+  const { service, client, startISO, amountPaidCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -472,7 +475,7 @@ async function sendConfirmationNotifications(params: {
     let emailHtml: string;
     try {
       console.log("[bookings] building email HTML");
-      emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl });
+      emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, paidViaFacialPackage, isNewClient, intakeFormUrl });
       console.log("[bookings] email HTML built, length:", emailHtml.length);
     } catch (buildErr) {
       console.error("[bookings] buildConfirmationEmail threw:", buildErr);
@@ -541,13 +544,16 @@ function buildConfirmationEmail(params: {
   displayDate: string;
   displayTime: string;
   amountPaidCents: number;
+  paidViaFacialPackage: boolean;
   isNewClient: boolean;
   intakeFormUrl: string | null;
 }) {
-  const { client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl } = params;
-  const paidDisplay = amountPaidCents === 0
-    ? "Covered by package / promotions"
-    : `$${(amountPaidCents / 100).toFixed(0)}`;
+  const { client, service, displayDate, displayTime, amountPaidCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
+  const paidDisplay = paidViaFacialPackage
+    ? "Paid via Facial Package"
+    : amountPaidCents === 0
+      ? "Covered by promotions"
+      : `$${(amountPaidCents / 100).toFixed(0)}`;
   const duration = service.duration_minutes < 60
     ? `${service.duration_minutes} min`
     : `${Math.floor(service.duration_minutes / 60)} hr${service.duration_minutes % 60 ? ` ${service.duration_minutes % 60} min` : ""}`;

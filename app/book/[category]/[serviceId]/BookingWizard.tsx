@@ -20,6 +20,7 @@ interface BookingResult {
   startISO: string;
   amountCents: number;
   amountPaidCents: number;
+  paidViaFacialPackage?: boolean;
   isNewClient?: boolean;
   client: { first_name: string; last_name: string; email: string };
 }

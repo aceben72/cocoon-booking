@@ -10,6 +10,7 @@ interface BookingResult {
   startISO: string;
   amountCents: number;
   amountPaidCents: number;
+  paidViaFacialPackage?: boolean;
   isNewClient?: boolean;
   client: { first_name: string; last_name: string; email: string };
 }
@@ -19,8 +20,9 @@ interface Props {
 }
 
 export default function StepConfirmation({ result }: Props) {
-  const { service, startISO, amountCents, amountPaidCents, client, isNewClient } = result;
-  const hasOutstanding = amountPaidCents < amountCents;
+  const { service, startISO, amountCents, amountPaidCents, paidViaFacialPackage, client, isNewClient } = result;
+  // A facial package covers the full cost — never treat as outstanding balance
+  const hasOutstanding = !paidViaFacialPackage && amountPaidCents < amountCents;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -80,10 +82,13 @@ export default function StepConfirmation({ result }: Props) {
           <div className="pt-4 border-t border-[#f0ebe4] space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-[#3a3330]">
-                {hasOutstanding ? "Deposit paid" : "Paid"}
+                {paidViaFacialPackage ? "Facial package" : hasOutstanding ? "Deposit paid" : "Paid"}
               </span>
-              <span className="text-xl font-[family-name:var(--font-cormorant)] font-medium text-[#044e77]">
-                {formatPrice(amountPaidCents)}
+              <span className={[
+                "text-xl font-[family-name:var(--font-cormorant)] font-medium",
+                paidViaFacialPackage ? "text-emerald-700" : "text-[#044e77]",
+              ].join(" ")}>
+                {paidViaFacialPackage ? "Covered ✓" : formatPrice(amountPaidCents)}
               </span>
             </div>
             {hasOutstanding && (

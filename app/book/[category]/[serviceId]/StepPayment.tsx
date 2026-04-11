@@ -76,22 +76,39 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
     label: string; // e.g. "20% off" or "$10 off"
   } | null>(null);
 
+  // ── Facial package state ──────────────────────────────────────
+  const isFacialPackageService = service.id === "indulge-facial" || service.id === "opulence-facial";
+  const [fpCode, setFpCode] = useState("");
+  const [fpValidating, setFpValidating] = useState(false);
+  const [fpError, setFpError] = useState("");
+  const [appliedFacialPackage, setAppliedFacialPackage] = useState<{
+    code: string;
+    package_type: "indulge" | "opulence";
+    remaining_uses: number;
+    expires_at: string;
+  } | null>(null);
+
   // ── Price calculation ─────────────────────────────────────────
   const baseAmountCents = hasDepositOption && paymentMode === "deposit"
     ? DEPOSIT_CENTS
     : service.price_cents;
 
+  // Facial package covers the full amount (trumps all other discounts)
+  const facialPackageCoversAll = appliedFacialPackage !== null;
+
   // Coupon discount applies to the service total (not deposit)
-  const couponDiscountCents = appliedCoupon?.discountCents ?? 0;
+  const couponDiscountCents = !facialPackageCoversAll ? (appliedCoupon?.discountCents ?? 0) : 0;
   // Gift card covers what's left after coupon
   const afterCoupon = Math.max(0, service.price_cents - couponDiscountCents);
-  const giftCardApplied = appliedGiftCard
+  const giftCardApplied = (!facialPackageCoversAll && appliedGiftCard)
     ? Math.min(appliedGiftCard.remaining_value_cents, afterCoupon)
     : 0;
 
   // Amount to charge to card: baseAmount - coupon - gift card (but at least 0)
   let amountPaidCents: number;
-  if (paymentMode === "deposit") {
+  if (facialPackageCoversAll) {
+    amountPaidCents = 0;
+  } else if (paymentMode === "deposit") {
     // For deposit mode: discount from deposit amount only
     amountPaidCents = Math.max(0, DEPOSIT_CENTS - couponDiscountCents - giftCardApplied);
   } else {
@@ -238,6 +255,36 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
     }
   };
 
+  // ── Facial package validation ─────────────────────────────────
+  const handleApplyFacialPackage = async () => {
+    if (!fpCode.trim()) return;
+    setFpValidating(true);
+    setFpError("");
+    try {
+      const res = await fetch("/api/validate-facial-package", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: fpCode, serviceSlug: service.id }),
+      });
+      const data = await res.json();
+      if (data.valid && data.package) {
+        setAppliedFacialPackage({
+          code: data.package.code,
+          package_type: data.package.package_type,
+          remaining_uses: data.package.remaining_uses,
+          expires_at: data.package.expires_at,
+        });
+        setFpCode("");
+      } else {
+        setFpError(data.error ?? "Invalid facial package code.");
+      }
+    } catch {
+      setFpError("Could not validate package code. Please try again.");
+    } finally {
+      setFpValidating(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (needsCardPayment && (!cardRef.current || submitting)) return;
     if (!needsCardPayment && submitting) return;
@@ -269,6 +316,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
           amountPaidCents,
           giftCardCode: appliedGiftCard?.code ?? null,
           couponCode: appliedCoupon?.code ?? null,
+          facialPackageCode: appliedFacialPackage?.code ?? null,
         }),
       });
 
@@ -343,6 +391,15 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
                 <span className="text-emerald-700 font-light">−{formatPrice(giftCardApplied)}</span>
               </div>
             )}
+            {/* Facial package line */}
+            {appliedFacialPackage && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-emerald-700 font-light">
+                  Facial package ({appliedFacialPackage.code})
+                </span>
+                <span className="text-emerald-700 font-light">−{formatPrice(service.price_cents)}</span>
+              </div>
+            )}
             {/* Deposit mode breakdown */}
             {paymentMode === "deposit" && amountPaidCents >= 50 ? (
               <>
@@ -398,6 +455,62 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
               title={`Pay deposit — ${formatPrice(DEPOSIT_CENTS)} today, remainder due at appointment`}
             />
           </div>
+        </div>
+      )}
+
+      {/* Facial Package — separate card, only for eligible services */}
+      {isFacialPackageService && (
+        <div className="bg-white rounded-2xl border border-[#e8e0d8] p-6 mb-5">
+          <h3 className="text-xs uppercase tracking-wider text-[#b0a499] font-light mb-1">
+            Facial Package
+          </h3>
+          <p className="text-xs text-[#9a8f87] font-light mb-4">
+            Redeem one appointment from a facial package
+          </p>
+
+          {appliedFacialPackage ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm text-emerald-800 font-medium">{appliedFacialPackage.code}</p>
+                  <p className="text-xs text-emerald-700 font-light mt-0.5">
+                    {appliedFacialPackage.remaining_uses - 1} appointment{appliedFacialPackage.remaining_uses - 1 !== 1 ? "s" : ""} remaining after this booking
+                    {" · "}Expires {new Date(appliedFacialPackage.expires_at).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}
+                  </p>
+                  <p className="text-xs text-emerald-600 font-light mt-1">Full appointment cost covered ✓</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAppliedFacialPackage(null)}
+                  className="text-xs text-emerald-700 hover:text-red-600 shrink-0 transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={fpCode}
+                onChange={(e) => { setFpCode(e.target.value.toUpperCase()); setFpError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && handleApplyFacialPackage()}
+                placeholder="FPKG-XXXX-XXXX-XXXX"
+                className="flex-1 rounded-xl border border-[#e8e0d8] px-4 py-2.5 text-sm font-light focus:outline-none focus:border-[#044e77] uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal"
+              />
+              <button
+                type="button"
+                onClick={handleApplyFacialPackage}
+                disabled={!fpCode.trim() || fpValidating}
+                className="rounded-xl border border-[#044e77] text-[#044e77] px-4 py-2.5 text-sm font-light hover:bg-[#044e77] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {fpValidating ? "Checking…" : "Apply"}
+              </button>
+            </div>
+          )}
+          {fpError && (
+            <p className="text-xs text-red-600 mt-1.5 font-light">{fpError}</p>
+          )}
         </div>
       )}
 
@@ -531,7 +644,9 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
       {/* Free booking notice */}
       {!needsCardPayment && amountPaidCents === 0 && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-5 text-sm text-emerald-800 font-light">
-          Your promotions cover the full amount — no payment required today.
+          {appliedFacialPackage
+            ? "This appointment is covered by your facial package — no payment required."
+            : "Your promotions cover the full amount — no payment required today."}
         </div>
       )}
 

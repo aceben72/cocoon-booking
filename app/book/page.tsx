@@ -75,6 +75,29 @@ export default function SelectCategoryPage() {
             </span>
           </Link>
 
+          {/* Facial Packages — redirect to /facial-packages */}
+          <Link
+            href="/facial-packages"
+            className="group bg-white rounded-2xl border border-[#e8e0d8] p-7 flex flex-col gap-3
+                       hover:border-[#fbb040] hover:shadow-md transition-all duration-200"
+          >
+            <div className="text-[#fbb040] text-2xl">✨</div>
+            <h2 className="font-[family-name:var(--font-cormorant)] text-2xl font-medium italic text-[#044e77]
+                           group-hover:text-[#033d5c] transition-colors">
+              Facial Packages
+            </h2>
+            <p className="text-sm text-[#7a6f68] font-light leading-relaxed">
+              Purchase a package of four facial appointments and save — choose Indulge or Opulence.
+            </p>
+            <span className="mt-auto inline-flex items-center gap-1 text-sm text-[#044e77] font-medium
+                             group-hover:gap-2 transition-all">
+              Purchase a package
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </span>
+          </Link>
+
           {/* Gift Cards — redirect to /gift-cards */}
           <Link
             href="/gift-cards"

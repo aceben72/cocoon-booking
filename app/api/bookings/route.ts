@@ -4,6 +4,7 @@ import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
+import { validateFacialPackage } from "@/lib/facial-packages";
 import type { ClientDetailsForm } from "@/types";
 
 interface BookingRequest {
@@ -15,6 +16,7 @@ interface BookingRequest {
   amountPaidCents?: number; // deposit or full; defaults to full price
   giftCardCode?: string | null;
   couponCode?: string | null;
+  facialPackageCode?: string | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -34,6 +36,7 @@ export async function POST(request: NextRequest) {
     amountPaidCents: rawAmountPaid,
     giftCardCode,
     couponCode,
+    facialPackageCode,
   } = body;
 
   // Validate required fields
@@ -114,10 +117,29 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Server-side discount validation ──────────────────────────────────
+
+  // Facial package takes precedence — re-validate server-side
+  let facialPackageId: string | null = null;
+  const facialPackagePaidInFull = !!facialPackageCode;
+
+  if (facialPackageCode) {
+    const fpResult = await validateFacialPackage(facialPackageCode, serviceId);
+    if (!fpResult.valid || !fpResult.package) {
+      return NextResponse.json({ error: `Facial package: ${fpResult.error}` }, { status: 400 });
+    }
+    // Look up the facial_packages UUID from the code
+    const { data: fpRow } = await supabase
+      .from("facial_packages")
+      .select("id")
+      .eq("code", facialPackageCode.trim().toUpperCase())
+      .single();
+    if (fpRow) facialPackageId = fpRow.id as string;
+  }
+
   let couponId: string | null = null;
   let couponDiscountCents = 0;
 
-  if (couponCode) {
+  if (!facialPackagePaidInFull && couponCode) {
     const couponResult = await validateCoupon(couponCode, service.category, service.price_cents);
     if (!couponResult.valid || !couponResult.coupon) {
       return NextResponse.json({ error: `Discount code: ${couponResult.error}` }, { status: 400 });
@@ -129,7 +151,7 @@ export async function POST(request: NextRequest) {
   let giftCardId: string | null = null;
   let giftCardAppliedCents = 0;
 
-  if (giftCardCode) {
+  if (!facialPackagePaidInFull && giftCardCode) {
     const gcResult = await validateGiftCard(giftCardCode);
     if (!gcResult.valid || !gcResult.giftCard) {
       return NextResponse.json({ error: `Gift card: ${gcResult.error}` }, { status: 400 });
@@ -145,7 +167,9 @@ export async function POST(request: NextRequest) {
   const depositAllowed = !["brow-treatments", "led-light-treatments"].includes(service.category);
   let amountPaidCents: number;
 
-  if (
+  if (facialPackagePaidInFull) {
+    amountPaidCents = 0;
+  } else if (
     depositAllowed &&
     typeof rawAmountPaid === "number" &&
     rawAmountPaid > 0 &&
@@ -314,6 +338,27 @@ export async function POST(request: NextRequest) {
         .from("gift_cards")
         .update({ remaining_value_cents: newBalance })
         .eq("id", giftCardId);
+    }
+  }
+
+  // ── Record facial package redemption ─────────────────────────────────
+  if (facialPackageId) {
+    await supabase.from("facial_package_redemptions").insert({
+      facial_package_id: facialPackageId,
+      appointment_id: appointment.id,
+    });
+
+    // Decrement remaining uses
+    const { data: fpRow } = await supabase
+      .from("facial_packages")
+      .select("remaining_uses")
+      .eq("id", facialPackageId)
+      .single();
+    if (fpRow) {
+      await supabase
+        .from("facial_packages")
+        .update({ remaining_uses: Math.max(0, fpRow.remaining_uses - 1) })
+        .eq("id", facialPackageId);
     }
   }
 
@@ -501,7 +546,7 @@ function buildConfirmationEmail(params: {
 }) {
   const { client, service, displayDate, displayTime, amountPaidCents, isNewClient, intakeFormUrl } = params;
   const paidDisplay = amountPaidCents === 0
-    ? "Covered by promotions"
+    ? "Covered by package / promotions"
     : `$${(amountPaidCents / 100).toFixed(0)}`;
   const duration = service.duration_minutes < 60
     ? `${service.duration_minutes} min`

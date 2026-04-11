@@ -20,6 +20,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <NavLink href="/admin/classes">Classes</NavLink>
               <NavLink href="/admin/clients">Clients</NavLink>
               <NavLink href="/admin/gift-cards">Gift Cards</NavLink>
+              <NavLink href="/admin/facial-packages">Facial Packages</NavLink>
               <NavLink href="/admin/coupons">Coupons</NavLink>
             </nav>
           </div>

@@ -34,6 +34,7 @@ interface RawAppointment {
     is_new_client: boolean;
   } | null;
   intake_forms: { id: string; status: string; token: string }[];
+  facial_package_redemptions: { id: string }[];
 }
 
 export interface RawBlockedPeriod {
@@ -74,7 +75,8 @@ async function getAppointments(status: string, from: string, to: string): Promis
       square_payment_id, payment_link_token, notes, created_at,
       services ( name, category, duration_minutes ),
       clients ( first_name, last_name, email, mobile, is_new_client ),
-      intake_forms ( id, status, token )
+      intake_forms ( id, status, token ),
+      facial_package_redemptions ( id )
     `)
     .order("start_datetime", { ascending: true });
 

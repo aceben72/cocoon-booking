@@ -649,7 +649,7 @@ function buildReminderEmail(p: {
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
       Cocoon Skin &amp; Beauty · 16 Bunderoo Circuit, Pimpama QLD 4209<br>
-      Questions? Email us at hello@cocoonskinandbeauty.com.au
+      Questions? Email us at amanda@cocoonskinandbeauty.com.au
     </p>
   `);
 }

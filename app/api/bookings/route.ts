@@ -163,8 +163,12 @@ export async function POST(request: NextRequest) {
 
   const totalDiscountCents = couponDiscountCents + giftCardAppliedCents;
 
-  // Determine final amount to charge
+  // Determine final amount to charge.
+  // The deposit amount is authoritative server-side — we only accept the
+  // client-signalled deposit if the configured DEPOSIT_CENTS matches.
+  // Any other client-supplied value is ignored and full payment is charged.
   const depositAllowed = !["brow-treatments", "led-light-treatments"].includes(service.category);
+  const DEPOSIT_CENTS = service.deposit_cents ?? 5000; // $50 default, matches StepPayment
   let amountPaidCents: number;
 
   if (facialPackagePaidInFull) {
@@ -172,13 +176,12 @@ export async function POST(request: NextRequest) {
   } else if (
     depositAllowed &&
     typeof rawAmountPaid === "number" &&
-    rawAmountPaid > 0 &&
-    rawAmountPaid <= service.price_cents
+    rawAmountPaid === DEPOSIT_CENTS
   ) {
-    // Client chose deposit — apply discounts
-    amountPaidCents = Math.max(0, rawAmountPaid - totalDiscountCents);
+    // Client chose deposit — amount must match configured deposit exactly
+    amountPaidCents = Math.max(0, DEPOSIT_CENTS - totalDiscountCents);
   } else {
-    // Full payment
+    // Full payment (or rawAmountPaid didn't match configured deposit — default to full)
     amountPaidCents = Math.max(0, service.price_cents - totalDiscountCents);
   }
 

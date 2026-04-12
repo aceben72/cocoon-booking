@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdminAuth } from "@/lib/admin-auth";
 
 function supabase() {
   return createClient(
@@ -9,7 +10,9 @@ function supabase() {
 }
 
 /** GET /api/coupons — list all coupons with category restrictions (admin) */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request);
+  if (authError) return authError;
   const { data, error } = await supabase()
     .from("coupons")
     .select("*, coupon_category_restrictions(category)")
@@ -21,6 +24,9 @@ export async function GET() {
 
 /** POST /api/coupons — create a coupon (admin) */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminAuth(request);
+  if (authError) return authError;
+
   const body = await request.json().catch(() => ({}));
   const {
     code,

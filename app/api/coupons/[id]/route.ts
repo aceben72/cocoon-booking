@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdminAuth } from "@/lib/admin-auth";
 
 function supabase() {
   return createClient(
@@ -13,6 +14,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const authError = await requireAdminAuth(request);
+  if (authError) return authError;
+
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const { is_active } = body as { is_active?: boolean };

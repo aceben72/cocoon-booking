@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { generateGiftCardCode } from "@/lib/gift-cards";
+import { requireAdminAuth } from "@/lib/admin-auth";
 
 function supabase() {
   return createClient(
@@ -10,7 +11,9 @@ function supabase() {
 }
 
 /** GET /api/gift-cards — list all gift cards (admin) */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authError = await requireAdminAuth(request);
+  if (authError) return authError;
   const { data, error } = await supabase()
     .from("gift_cards")
     .select("*")
@@ -22,6 +25,9 @@ export async function GET() {
 
 /** POST /api/gift-cards — create a gift card (admin) */
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminAuth(request);
+  if (authError) return authError;
+
   const body = await request.json().catch(() => ({}));
   const {
     initial_value_cents,
@@ -79,6 +85,9 @@ export async function POST(request: NextRequest) {
 
 /** PATCH /api/gift-cards — toggle active status by id */
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminAuth(request);
+  if (authError) return authError;
+
   const body = await request.json().catch(() => ({}));
   const { id, is_active } = body as { id?: string; is_active?: boolean };
 

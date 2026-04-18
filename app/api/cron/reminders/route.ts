@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "crypto";
 import { sendAppointmentReminder, sendClassReminder } from "@/lib/notifications";
 
 function supabase() {
@@ -222,13 +223,133 @@ export async function GET(request: NextRequest) {
 
   console.log(`[cron/reminders] follow-ups done — ${followupSent} sent, ${followupErrors} error(s)`);
 
+  // ── Mailchimp tagging for completed Make-Up Class participants ────────────
+  // For every confirmed class_booking whose session has ended and which has not
+  // yet been tagged, upsert the member to the Mailchimp audience and apply the
+  // "makeup-class" tag, then stamp mailchimp_tagged_at to prevent re-processing.
+  const mcApiKey    = process.env.MAILCHIMP_API_KEY;
+  const mcPrefix    = process.env.MAILCHIMP_SERVER_PREFIX;
+  const mcAudience  = "89c5fafdee";
+
+  let mcTagged = 0;
+  let mcErrors = 0;
+
+  if (!mcApiKey || !mcPrefix) {
+    console.warn("[cron/mailchimp] MAILCHIMP_API_KEY or MAILCHIMP_SERVER_PREFIX not set — skipping");
+  } else {
+    try {
+      // Step 1: find active sessions that started in the past
+      // (filter to those whose end time has also passed, in JS)
+      const { data: pastSessions, error: pastSessionsErr } = await supabase()
+        .from("class_sessions")
+        .select("id, start_datetime, duration_minutes")
+        .eq("active", true)
+        .lt("start_datetime", now.toISOString());
+
+      if (pastSessionsErr) {
+        console.error("[cron/mailchimp] class_sessions query failed:", pastSessionsErr.message);
+      } else {
+        const endedSessionIds = (pastSessions ?? [])
+          .filter((s) => {
+            const endMs = new Date(s.start_datetime).getTime() + s.duration_minutes * 60_000;
+            return endMs < now.getTime();
+          })
+          .map((s) => s.id);
+
+        if (endedSessionIds.length > 0) {
+          // Step 2: confirmed, not-yet-tagged bookings for those sessions
+          const { data: untagged, error: untaggedErr } = await supabase()
+            .from("class_bookings")
+            .select("id, clients ( first_name, last_name, email )")
+            .in("session_id", endedSessionIds)
+            .eq("status", "confirmed")
+            .is("mailchimp_tagged_at", null);
+
+          if (untaggedErr) {
+            console.error("[cron/mailchimp] class_bookings query failed:", untaggedErr.message);
+          } else {
+            const auth = Buffer.from(`anystring:${mcApiKey}`).toString("base64");
+
+            for (const booking of untagged ?? []) {
+              const client = booking.clients as unknown as {
+                first_name: string;
+                last_name:  string;
+                email:      string;
+              } | null;
+
+              if (!client?.email) {
+                console.warn(`[cron/mailchimp] booking ${booking.id} — no client email, skipping`);
+                continue;
+              }
+
+              try {
+                const emailHash = createHash("md5").update(client.email.toLowerCase()).digest("hex");
+                const memberUrl = `https://${mcPrefix}.api.mailchimp.com/3.0/lists/${mcAudience}/members/${emailHash}`;
+
+                // Upsert member (subscribe if new, keep status if already subscribed)
+                const memberRes = await fetch(memberUrl, {
+                  method: "PUT",
+                  headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    email_address: client.email,
+                    status_if_new: "subscribed",
+                    merge_fields: { FNAME: client.first_name, LNAME: client.last_name },
+                  }),
+                });
+
+                if (!memberRes.ok) {
+                  const err = await memberRes.json();
+                  throw new Error(`Mailchimp upsert failed: ${JSON.stringify(err)}`);
+                }
+
+                // Apply makeup-class tag
+                const tagRes = await fetch(`${memberUrl}/tags`, {
+                  method: "POST",
+                  headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    tags: [{ name: "makeup-class", status: "active" }],
+                  }),
+                });
+
+                if (!tagRes.ok) {
+                  const err = await tagRes.json();
+                  // Log but don't throw — member was successfully upserted
+                  console.error(`[cron/mailchimp] tag failed for ${client.email}:`, JSON.stringify(err));
+                } else {
+                  console.log(`[cron/mailchimp] tagged ${client.email} as makeup-class`);
+                }
+
+                // Stamp the booking so it isn't processed again (even if tag call failed)
+                await supabase()
+                  .from("class_bookings")
+                  .update({ mailchimp_tagged_at: now.toISOString() })
+                  .eq("id", booking.id);
+
+                mcTagged++;
+              } catch (err) {
+                console.error(`[cron/mailchimp] booking ${booking.id} failed:`, err);
+                mcErrors++;
+                // Do NOT stamp mailchimp_tagged_at — will be retried next run
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[cron/mailchimp] unexpected error:", err);
+    }
+  }
+
+  console.log(`[cron/mailchimp] done — ${mcTagged} tagged, ${mcErrors} error(s)`);
+
   return NextResponse.json({
     ok: true,
-    reminders: { sent, errors },
-    followups: { sent: followupSent, errors: followupErrors },
+    reminders:  { sent, errors },
+    followups:  { sent: followupSent, errors: followupErrors },
+    mailchimp:  { tagged: mcTagged, errors: mcErrors },
     windows: {
       reminders: { start: windowStart, end: windowEnd },
-      followups:  { start: followupWindowStart, end: followupWindowEnd },
+      followups: { start: followupWindowStart, end: followupWindowEnd },
     },
   });
 }

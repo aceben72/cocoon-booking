@@ -21,6 +21,10 @@ export interface ClassBookingResult {
 
 interface Props {
   session: ClassSessionWithAvailability & { title: string };
+  /** URL for "Back to sessions" / "Change" links. Defaults to /book/make-up-classes */
+  backPath?: string;
+  /** Label shown above the session title in the summary bar. Defaults to "Make-Up Classes" */
+  categoryLabel?: string;
 }
 
 function formatSessionDateTime(iso: string) {
@@ -40,7 +44,7 @@ function formatSessionDateTime(iso: string) {
   return `${date} at ${time}`;
 }
 
-export default function ClassBookingWizard({ session }: Props) {
+export default function ClassBookingWizard({ session, backPath = "/book/make-up-classes", categoryLabel = "Make-Up Classes" }: Props) {
   const [step, setStep] = useState<WizardStep>("details");
   const [clientDetails, setClientDetails] = useState<ClientDetailsForm | null>(null);
   const [bookingResult, setBookingResult] = useState<ClassBookingResult | null>(null);
@@ -73,7 +77,7 @@ export default function ClassBookingWizard({ session }: Props) {
           <div className="bg-white rounded-2xl border border-[#e8e0d8] px-5 py-4 mb-8">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs text-[#b0a499] font-light mb-0.5">Make-Up Classes</p>
+                <p className="text-xs text-[#b0a499] font-light mb-0.5">{categoryLabel}</p>
                 <h2 className="font-[family-name:var(--font-cormorant)] text-xl font-medium text-[#044e77]">
                   {session.title}
                 </h2>
@@ -82,7 +86,7 @@ export default function ClassBookingWizard({ session }: Props) {
                 </p>
               </div>
               <Link
-                href="/book/make-up-classes"
+                href={backPath}
                 className="text-xs text-[#9a8f87] hover:text-[#044e77] transition-colors shrink-0"
               >
                 Change
@@ -149,7 +153,7 @@ export default function ClassBookingWizard({ session }: Props) {
             onSubmit={handleDetailsSubmit}
             onBack={() => { /* back goes to session list */ }}
             backLabel="Back to sessions"
-            backHref="/book/make-up-classes"
+            backHref={backPath}
           />
         )}
 

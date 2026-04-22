@@ -2,6 +2,7 @@
   "name": "Cocoon Admin",
   "short_name": "Cocoon",
   "description": "Cocoon Skin & Beauty — admin panel",
+  "scope": "/admin",
   "start_url": "/admin",
   "display": "standalone",
   "background_color": "#f8f5f2",

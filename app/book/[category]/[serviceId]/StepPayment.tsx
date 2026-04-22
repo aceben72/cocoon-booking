@@ -496,7 +496,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
                 value={fpCode}
                 onChange={(e) => { setFpCode(e.target.value.toUpperCase()); setFpError(""); }}
                 onKeyDown={(e) => e.key === "Enter" && handleApplyFacialPackage()}
-                placeholder="FPKG-XXXX-XXXX-XXXX"
+                placeholder="Enter package code"
                 className="flex-1 rounded-xl border border-[#e8e0d8] px-4 py-2.5 text-sm font-light focus:outline-none focus:border-[#044e77] uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal"
               />
               <button

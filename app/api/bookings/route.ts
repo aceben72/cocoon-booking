@@ -245,6 +245,7 @@ export async function POST(request: NextRequest) {
         first_name: client.first_name,
         last_name: client.last_name,
         mobile,
+        notes: client.notes || null,
       })
       .eq("id", clientId);
   } else {

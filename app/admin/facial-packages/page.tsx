@@ -158,7 +158,7 @@ export default function FacialPackagesAdminPage() {
                           "font-medium",
                           isUsed ? "text-[#9a8f87]" : "text-emerald-700",
                         ].join(" ")}>
-                          {pkg.remaining_uses}/{pkg.total_uses}
+                          {pkg.total_uses - pkg.remaining_uses}/{pkg.total_uses}
                         </span>
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">

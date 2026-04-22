@@ -16,6 +16,7 @@ export default function AllCategoriesLink() {
       onClick={(e) => {
         e.preventDefault();
         router.push("/book");
+        router.refresh();
       }}
       className="inline-flex items-center gap-1 text-sm text-[#7a6f68] hover:text-[#044e77] mb-8 transition-colors font-light"
     >

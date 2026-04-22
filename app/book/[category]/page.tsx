@@ -4,6 +4,7 @@ import BookingProgress from "@/components/BookingProgress";
 import { CATEGORY_META, SERVICES } from "@/lib/services-data";
 import { formatPrice, formatDuration } from "@/lib/utils";
 import type { ServiceCategory } from "@/types";
+import AllCategoriesLink from "../AllCategoriesLink";
 
 interface Props {
   params: Promise<{ category: string }>;
@@ -28,15 +29,7 @@ export default async function SelectServicePage({ params }: Props) {
 
       <div className="max-w-2xl mx-auto px-4 py-12">
         {/* Back + heading */}
-        <Link
-          href="/book"
-          className="inline-flex items-center gap-1 text-sm text-[#7a6f68] hover:text-[#044e77] mb-8 transition-colors font-light"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          All categories
-        </Link>
+        <AllCategoriesLink />
 
         <div className="mb-8">
           <h1 className="font-[family-name:var(--font-cormorant)] text-4xl font-light italic text-[#044e77] mb-2">

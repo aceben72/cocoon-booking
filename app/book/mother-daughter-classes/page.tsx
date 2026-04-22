@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import BookingProgress from "@/components/BookingProgress";
 import type { ClassSessionWithAvailability } from "@/types";
+import AllCategoriesLink from "../AllCategoriesLink";
 
 export const dynamic = "force-dynamic";
 
@@ -48,15 +49,7 @@ export default async function MotherDaughterClassesPage() {
       <BookingProgress currentStep={1} />
 
       <div className="max-w-2xl mx-auto px-4 py-12">
-        <Link
-          href="/book"
-          className="inline-flex items-center gap-1 text-sm text-[#7a6f68] hover:text-[#044e77] mb-8 transition-colors font-light"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          All categories
-        </Link>
+        <AllCategoriesLink />
 
         <div className="mb-8">
           <h1 className="font-[family-name:var(--font-cormorant)] text-4xl font-light italic text-[#044e77] mb-2">

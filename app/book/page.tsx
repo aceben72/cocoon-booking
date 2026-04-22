@@ -4,6 +4,8 @@ import BookingProgress from "@/components/BookingProgress";
 import { CATEGORY_META } from "@/lib/services-data";
 import DeepLinkGate from "./DeepLinkGate";
 
+export const dynamic = "force-dynamic";
+
 export default function SelectCategoryPage() {
   return (
     <>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendRescheduleNotification } from "@/lib/notifications";
+import { sendRescheduleNotification, sendAppointmentCancellation } from "@/lib/notifications";
 
 function supabase() {
   return createClient(
@@ -82,6 +82,17 @@ export async function PATCH(
 
   const db = supabase();
 
+  // Pre-fetch appointment details needed for notifications
+  const { data: apptDetails } = await db
+    .from("appointments")
+    .select(`
+      start_datetime,
+      services ( name, duration_minutes ),
+      clients ( first_name, last_name, email, mobile )
+    `)
+    .eq("id", id)
+    .single();
+
   const { data, error } = await db
     .from("appointments")
     .update({ status })
@@ -106,6 +117,19 @@ export async function PATCH(
         .from("clients")
         .update({ is_new_client: false })
         .eq("id", data.client_id);
+    }
+  }
+
+  // Cancellation notifications to client
+  if (status === "cancelled" && apptDetails) {
+    const clientData = apptDetails.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string } | null;
+    const svcData    = apptDetails.services as unknown as { name: string; duration_minutes: number } | null;
+    if (clientData?.email && clientData?.mobile && svcData?.name) {
+      sendAppointmentCancellation({
+        serviceName: svcData.name,
+        startISO:    apptDetails.start_datetime,
+        client:      clientData,
+      }).catch(console.error);
     }
   }
 

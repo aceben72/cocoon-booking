@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normaliseMobile } from "@/lib/utils";
-import { sendClassBookingConfirmation } from "@/lib/notifications";
+import { sendClassBookingConfirmation, sendAdminClassNotification } from "@/lib/notifications";
 import type { ClientDetailsForm } from "@/types";
 
 const CLASS_PRICE_PER_TICKET_CENTS = 8900; // $89 per person — fixed for all class types
@@ -194,6 +194,14 @@ export async function POST(request: NextRequest) {
     amountCents:     totalAmountCents,
     quantity,
     client:          { ...client, mobile },
+  }).catch(console.error);
+
+  // Admin notification to Amanda
+  sendAdminClassNotification({
+    className: session.title as string,
+    startISO:  session.start_datetime as string,
+    quantity,
+    client:    { ...client, mobile },
   }).catch(console.error);
 
   return NextResponse.json({

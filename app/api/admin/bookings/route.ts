@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { randomUUID, randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
-import { sendPaymentRequest, sendAppointmentConfirmation } from "@/lib/notifications";
+import { sendPaymentRequest, sendAppointmentConfirmation, sendAdminBookingNotification } from "@/lib/notifications";
 
 function supabase() {
   return createClient(
@@ -192,6 +192,16 @@ export async function POST(request: NextRequest) {
       startISO,
       intakeFormUrl,
       client: { first_name: firstName, last_name: lastName, email, mobile },
+    }).catch(console.error);
+
+    // Admin notification to Amanda
+    sendAdminBookingNotification({
+      serviceName:     service.name,
+      durationMinutes: service.duration_minutes,
+      startISO,
+      isNewClient:     !existingClient,
+      notes:           null,
+      client:          { first_name: firstName, last_name: lastName, email, mobile },
     }).catch(console.error);
 
     return NextResponse.json({

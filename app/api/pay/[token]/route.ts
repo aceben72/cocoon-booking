@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendAppointmentConfirmation } from "@/lib/notifications";
+import { sendAppointmentConfirmation, sendAdminBookingNotification } from "@/lib/notifications";
 
 const DEPOSIT_CENTS = 5000;
 
@@ -19,7 +19,7 @@ interface RawAppointment {
   amount_cents: number;
   payment_link_token_expires_at: string;
   services: { name: string; category: string; duration_minutes: number } | null;
-  clients: { first_name: string; last_name: string; email: string; mobile: string } | null;
+  clients: { first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean; notes: string | null } | null;
 }
 
 export async function POST(
@@ -47,7 +47,7 @@ export async function POST(
     .select(`
       id, client_id, start_datetime, status, amount_cents, payment_link_token_expires_at,
       services ( name, category, duration_minutes ),
-      clients ( first_name, last_name, email, mobile )
+      clients ( first_name, last_name, email, mobile, is_new_client, notes )
     `)
     .eq("payment_link_token", token)
     .single();
@@ -181,6 +181,21 @@ export async function POST(
       },
     }).catch((err) => console.error("[pay/token] confirmation notifications failed for appointment", appointment.id, err));
     console.log("[pay/token] confirmation notifications sent for appointment", appointment.id);
+
+    // Admin notification to Amanda
+    await sendAdminBookingNotification({
+      serviceName:     serviceData.name,
+      durationMinutes: serviceData.duration_minutes,
+      startISO:        appointment.start_datetime,
+      isNewClient:     clientData.is_new_client ?? false,
+      notes:           clientData.notes ?? null,
+      client: {
+        first_name: clientData.first_name,
+        last_name:  clientData.last_name,
+        email:      clientData.email,
+        mobile:     clientData.mobile,
+      },
+    }).catch((err) => console.error("[pay/token] admin notification failed:", err));
   } else {
     console.error("[pay/token] skipping notifications — missing client or service data. appt.id:", appointment.id, "clients:", JSON.stringify(appt.clients), "services:", JSON.stringify(appt.services));
   }

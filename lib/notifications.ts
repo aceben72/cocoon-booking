@@ -703,6 +703,95 @@ function buildPaymentRequestEmail(p: {
   `);
 }
 
+// ── Internal: new appointment notification to Amanda ─────────────────────
+
+export interface AdminBookingNotifyParams {
+  serviceName: string;
+  durationMinutes: number;
+  startISO: string;
+  isNewClient: boolean;
+  notes?: string | null;
+  client: NotifyClient;
+}
+
+export async function sendAdminBookingNotification(params: AdminBookingNotifyParams) {
+  const to = process.env.AMANDA_EMAIL ?? "amanda@cocoonskinandbeauty.com.au";
+  const { serviceName, durationMinutes, startISO, isNewClient, notes, client } = params;
+  const displayDate = aestDate(startISO);
+  const displayTime = aestTime(startISO);
+  const hrs  = Math.floor(durationMinutes / 60);
+  const mins = durationMinutes % 60;
+  const duration = mins
+    ? `${hrs > 0 ? `${hrs} hr ` : ""}${mins} min`
+    : `${hrs} hour${hrs !== 1 ? "s" : ""}`;
+  try {
+    await sendEmail(
+      to,
+      `New booking – ${client.first_name} ${client.last_name}`,
+      buildAdminBookingEmail({ client, serviceName, displayDate, displayTime, duration, isNewClient, notes: notes ?? null }),
+    );
+  } catch (err) {
+    console.error("[notifications] admin booking notification failed:", err);
+  }
+}
+
+// ── Internal: new class booking notification to Amanda ────────────────────
+
+export interface AdminClassNotifyParams {
+  className: string;
+  startISO: string;
+  quantity: number;
+  client: NotifyClient;
+}
+
+export async function sendAdminClassNotification(params: AdminClassNotifyParams) {
+  const to = process.env.AMANDA_EMAIL ?? "amanda@cocoonskinandbeauty.com.au";
+  const { className, startISO, quantity, client } = params;
+  const displayDate = aestDate(startISO);
+  const displayTime = aestTime(startISO);
+  const ticketLabel = quantity === 1 ? "1 ticket" : `${quantity} tickets`;
+  try {
+    await sendEmail(
+      to,
+      `New class booking – ${client.first_name} ${client.last_name}`,
+      buildAdminClassEmail({ client, className, displayDate, displayTime, ticketLabel }),
+    );
+  } catch (err) {
+    console.error("[notifications] admin class notification failed:", err);
+  }
+}
+
+// ── Client: appointment cancellation email + SMS ──────────────────────────
+
+export interface AppointmentCancellationParams {
+  serviceName: string;
+  startISO: string;
+  client: NotifyClient;
+}
+
+export async function sendAppointmentCancellation(params: AppointmentCancellationParams) {
+  const { serviceName, startISO, client } = params;
+  const displayDate = aestDate(startISO);
+  const displayTime = aestTime(startISO);
+  try {
+    await sendEmail(
+      client.email,
+      "Your Cocoon appointment has been cancelled",
+      buildAppointmentCancellationEmail({ client, serviceName, displayDate, displayTime }),
+    );
+  } catch (err) {
+    console.error("[notifications] cancellation email failed:", err);
+  }
+  try {
+    await sendSMS(
+      client.mobile,
+      `Hi ${client.first_name}, your ${serviceName} appointment at Cocoon on ${displayDate} at ${displayTime} has been cancelled. Please contact Amanda to rebook. – Amanda`,
+    );
+  } catch (err) {
+    console.error("[notifications] cancellation SMS failed:", err);
+  }
+}
+
 // ── Intake form submission notification (to Amanda) ───────────────────────
 
 export async function sendIntakeFormNotification(params: {
@@ -742,4 +831,110 @@ export async function sendIntakeFormNotification(params: {
       </table>
     `),
   );
+}
+
+// ── Admin notification email templates ────────────────────────────────────
+
+function adminRow(label: string, value: string) {
+  return `<tr>
+    <td style="padding:7px 20px 7px 0;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;width:110px;vertical-align:top;white-space:nowrap;">${label}</td>
+    <td style="padding:7px 0;font-size:14px;color:#1a1a1a;line-height:1.5;">${value}</td>
+  </tr>`;
+}
+
+function buildAdminBookingEmail(p: {
+  client: NotifyClient;
+  serviceName: string;
+  displayDate: string;
+  displayTime: string;
+  duration: string;
+  isNewClient: boolean;
+  notes: string | null;
+}) {
+  return emailWrapper(`
+    <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:400;
+               font-style:italic;color:#044e77;margin:0 0 20px;">
+      New booking
+    </h1>
+    <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">
+      ${adminRow("Client", `${p.client.first_name} ${p.client.last_name}`)}
+      ${adminRow("Service", p.serviceName)}
+      ${adminRow("Date", p.displayDate)}
+      ${adminRow("Time", p.displayTime)}
+      ${adminRow("Duration", p.duration)}
+      ${adminRow("Email", `<a href="mailto:${p.client.email}" style="color:#044e77;text-decoration:none;">${p.client.email}</a>`)}
+      ${adminRow("Mobile", `<a href="tel:${p.client.mobile}" style="color:#044e77;text-decoration:none;">${p.client.mobile}</a>`)}
+      ${adminRow("New Client", p.isNewClient ? "<strong style=\"color:#044e77;\">Yes</strong>" : "No")}
+      ${p.notes ? adminRow("Notes", `<span style="color:#7a6f68;">${p.notes}</span>`) : ""}
+    </table>
+  `);
+}
+
+function buildAdminClassEmail(p: {
+  client: NotifyClient;
+  className: string;
+  displayDate: string;
+  displayTime: string;
+  ticketLabel: string;
+}) {
+  return emailWrapper(`
+    <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:26px;font-weight:400;
+               font-style:italic;color:#044e77;margin:0 0 20px;">
+      New class booking
+    </h1>
+    <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">
+      ${adminRow("Client", `${p.client.first_name} ${p.client.last_name}`)}
+      ${adminRow("Class", p.className)}
+      ${adminRow("Date", p.displayDate)}
+      ${adminRow("Time", p.displayTime)}
+      ${adminRow("Tickets", p.ticketLabel)}
+      ${adminRow("Email", `<a href="mailto:${p.client.email}" style="color:#044e77;text-decoration:none;">${p.client.email}</a>`)}
+      ${adminRow("Mobile", `<a href="tel:${p.client.mobile}" style="color:#044e77;text-decoration:none;">${p.client.mobile}</a>`)}
+    </table>
+  `);
+}
+
+function buildAppointmentCancellationEmail(p: {
+  client: NotifyClient;
+  serviceName: string;
+  displayDate: string;
+  displayTime: string;
+}) {
+  return emailWrapper(`
+    <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;font-weight:400;
+               font-style:italic;color:#044e77;margin:0 0 8px;">
+      Appointment Cancelled
+    </h1>
+    <p style="color:#7a6f68;font-size:15px;margin:0 0 32px;line-height:1.6;">
+      Hi ${p.client.first_name}, we're sorry to let you know that your upcoming appointment has been cancelled.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f8f5f2;border-radius:10px;padding:24px;margin-bottom:32px;">
+      <tr><td style="padding-bottom:12px;">
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Service</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.serviceName}</strong>
+      </td></tr>
+      <tr><td style="padding-bottom:12px;">
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Date</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.displayDate}</strong>
+      </td></tr>
+      <tr><td>
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Time</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.displayTime}</strong>
+      </td></tr>
+    </table>
+    <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
+      We sincerely apologise for any inconvenience. We'd love to find you another time —
+      please reach out to Amanda directly to rebook.
+    </p>
+    <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
+      <strong style="color:#1a1a1a;">Contact Amanda</strong><br>
+      <a href="mailto:amanda@cocoonskinandbeauty.com.au" style="color:#044e77;text-decoration:none;">amanda@cocoonskinandbeauty.com.au</a><br>
+      Cocoon Skin &amp; Beauty · 16 Bunderoo Circuit, Pimpama QLD 4209
+    </p>
+    <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
+              border-top:1px solid #f0ebe4;padding-top:20px;">
+      We look forward to welcoming you back to Cocoon soon.
+    </p>
+  `);
 }

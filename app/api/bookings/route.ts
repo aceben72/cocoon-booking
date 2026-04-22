@@ -5,6 +5,7 @@ import { aestToUTC, normaliseMobile } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
+import { sendAdminBookingNotification } from "@/lib/notifications";
 import type { ClientDetailsForm } from "@/types";
 
 interface BookingRequest {
@@ -423,6 +424,7 @@ export async function POST(request: NextRequest) {
     amountPaidCents,
     paidViaFacialPackage: facialPackagePaidInFull,
     isNewClient: !!client.is_new_client,
+    notes: client.notes || null,
     intakeFormUrl,
   }).catch(console.error);
 
@@ -446,14 +448,15 @@ export async function POST(request: NextRequest) {
 async function sendConfirmationNotifications(params: {
   appointmentId: string;
   service: { name: string; duration_minutes: number; price_cents: number };
-  client: { first_name: string; last_name: string; email: string; mobile: string };
+  client: { first_name: string; last_name: string; email: string; mobile: string; notes?: string | null };
   startISO: string;
   amountPaidCents: number;
   paidViaFacialPackage: boolean;
   isNewClient: boolean;
+  notes?: string | null;
   intakeFormUrl: string | null;
 }) {
-  const { service, client, startISO, amountPaidCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
+  const { service, client, startISO, amountPaidCents, paidViaFacialPackage, isNewClient, notes, intakeFormUrl } = params;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -540,6 +543,16 @@ async function sendConfirmationNotifications(params: {
       console.error("ClickSend error:", err);
     }
   }
+
+  // Admin notification email to Amanda
+  await sendAdminBookingNotification({
+    serviceName: service.name,
+    durationMinutes: service.duration_minutes,
+    startISO,
+    isNewClient,
+    notes,
+    client,
+  }).catch(console.error);
 }
 
 function buildConfirmationEmail(params: {

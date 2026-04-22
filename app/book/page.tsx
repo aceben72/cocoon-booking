@@ -75,6 +75,29 @@ export default function SelectCategoryPage() {
             </span>
           </Link>
 
+          {/* Mother & Daughter Make-Up Class — links to session browser */}
+          <Link
+            href="/book/mother-daughter-classes"
+            className="group bg-white rounded-2xl border border-[#e8e0d8] p-7 flex flex-col gap-3
+                       hover:border-[#fbb040] hover:shadow-md transition-all duration-200"
+          >
+            <div className="text-[#fbb040] text-2xl">💕</div>
+            <h2 className="font-[family-name:var(--font-cormorant)] text-2xl font-medium italic text-[#044e77]
+                           group-hover:text-[#033d5c] transition-colors">
+              Mother &amp; Daughter Make-Up Class
+            </h2>
+            <p className="text-sm text-[#7a6f68] font-light leading-relaxed">
+              A shared 3-hour make-up class for mothers and daughters — tailored to both of you individually. $89 per person.
+            </p>
+            <span className="mt-auto inline-flex items-center gap-1 text-sm text-[#044e77] font-medium
+                             group-hover:gap-2 transition-all">
+              View sessions
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </span>
+          </Link>
+
           {/* Facial Packages — redirect to /facial-packages */}
           <Link
             href="/facial-packages"

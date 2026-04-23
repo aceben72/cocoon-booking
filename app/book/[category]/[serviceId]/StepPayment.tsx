@@ -674,8 +674,16 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
       </button>
 
       <p className="text-xs text-center text-[#b0a499] font-light mt-3">
-        By confirming you agree to our cancellation policy.
-        Please provide 48 hours notice to cancel or reschedule.
+        By confirming you agree to our{" "}
+        <a
+          href="https://cocoonskinandbeauty.com.au/booking-cancellation-policy/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline"
+        >
+          booking policy
+        </a>
+        . Please provide 48 hours notice to cancel or reschedule.
       </p>
     </div>
   );

@@ -43,27 +43,28 @@ export default function DeepLinkGate() {
 
     const categoryId = resolveCategory(rawCategory);
 
-    // Validate category
-    const catMeta = CATEGORY_META.find((c) => c.id === categoryId);
-    if (!catMeta) return; // unknown category — fall back to normal Step 1
-
-    if (!rawService) {
-      // Only category provided — skip to Step 2 (service selection)
-      router.replace(`/book/${categoryId}`);
+    if (rawService) {
+      // Both category + service provided — validate against SERVICES directly.
+      // This handles single-service categories (e.g. mother-daughter) that have
+      // no category listing page and therefore no CATEGORY_META entry.
+      const serviceId = resolveService(rawService);
+      const service   = SERVICES.find(
+        (s) => s.id === serviceId && s.category === categoryId && s.active && !s.admin_only,
+      );
+      if (service) {
+        // Deep-link straight into the booking wizard at date selection.
+        // The `from=deeplink` marker lets BookingWizard show a "Change service → /book" link.
+        router.replace(`/book/${categoryId}/${serviceId}?from=deeplink`);
+      }
+      // If service not found, fall through and do nothing — stay on Step 1.
       return;
     }
 
-    const serviceId = resolveService(rawService);
+    // Category-only link — only valid for categories with a service listing page.
+    const catMeta = CATEGORY_META.find((c) => c.id === categoryId);
+    if (!catMeta) return; // unknown category — fall back to normal Step 1
 
-    // Validate service (must belong to the given category and be active)
-    const service = SERVICES.find(
-      (s) => s.id === serviceId && s.category === categoryId && s.active,
-    );
-    if (!service) return; // unknown service — fall back to Step 1
-
-    // Both valid — deep-link straight into the booking wizard at date selection.
-    // The `from=deeplink` marker lets BookingWizard show a "Change service → /book" link.
-    router.replace(`/book/${categoryId}/${serviceId}?from=deeplink`);
+    router.replace(`/book/${categoryId}`);
   }, [searchParams, router]);
 
   // Renders nothing — only here for the side-effect redirect.

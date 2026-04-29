@@ -55,7 +55,7 @@ const SQUARE_SDK_URL =
 
 export default function StepPayment({ service, date, time, client, onSuccess, onError, onBack }: Props) {
   // Only certain categories offer the deposit option; all others pay in full.
-  const hasDepositOption = !["brow-treatments", "led-light-treatments"].includes(service.category);
+  const hasDepositOption = !["brow-treatments", "led-light-treatments", "mother-daughter"].includes(service.category);
   const DEPOSIT_CENTS = service.deposit_cents ?? DEFAULT_DEPOSIT_CENTS;
   const [paymentMode, setPaymentMode] = useState<"full" | "deposit">("full");
 

@@ -60,11 +60,13 @@ export async function POST(request: NextRequest) {
   // New clients get an extra 15 min added to the slot so the initial
   // consultation doesn't push into the next booking.
   const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
+  // Mother & Daughter class does not get new-client consultation padding
+  const skipNewClientPadding = service.category === "mother-daughter";
   const startISO = aestToUTC(date, time);
   const totalMins =
     service.duration_minutes +
     service.padding_minutes +
-    (client.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
+    (!skipNewClientPadding && client.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
   const endDate = new Date(new Date(startISO).getTime() + totalMins * 60 * 1000);
   const endISO = endDate.toISOString();
 
@@ -168,7 +170,7 @@ export async function POST(request: NextRequest) {
   // The deposit amount is authoritative server-side — we only accept the
   // client-signalled deposit if the configured DEPOSIT_CENTS matches.
   // Any other client-supplied value is ignored and full payment is charged.
-  const depositAllowed = !["brow-treatments", "led-light-treatments"].includes(service.category);
+  const depositAllowed = !["brow-treatments", "led-light-treatments", "mother-daughter"].includes(service.category);
   const DEPOSIT_CENTS = service.deposit_cents ?? 5000; // $50 default, matches StepPayment
   let amountPaidCents: number;
 

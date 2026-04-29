@@ -77,9 +77,10 @@ export default function SelectCategoryPage() {
             </span>
           </Link>
 
-          {/* Mother & Daughter Make-Up Class — links to session browser */}
+          {/* Mother & Daughter Make-Up Class — links directly to booking wizard (one service, no list step)
+               Deep link: ?category=mother-daughter&service=mother-daughter-make-up-class */}
           <Link
-            href="/book/mother-daughter-classes"
+            href="/book/mother-daughter/mother-daughter-make-up-class"
             className="group bg-white rounded-2xl border border-[#e8e0d8] p-7 flex flex-col gap-3
                        hover:border-[#fbb040] hover:shadow-md transition-all duration-200"
           >
@@ -89,11 +90,11 @@ export default function SelectCategoryPage() {
               Mother &amp; Daughter Make-Up Class
             </h2>
             <p className="text-sm text-[#7a6f68] font-light leading-relaxed">
-              A shared 3-hour make-up class for mothers and daughters — tailored to both of you individually. $89 per person.
+              A private 2-hour make-up class for mothers and daughters — tailored to both of you. Book any time that suits you.
             </p>
             <span className="mt-auto inline-flex items-center gap-1 text-sm text-[#044e77] font-medium
                              group-hover:gap-2 transition-all">
-              View sessions
+              Book now
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>

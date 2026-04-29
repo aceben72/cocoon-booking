@@ -80,6 +80,17 @@ export const SERVICES: Service[] = [
     active: true,
   },
 
+  // Mother & Daughter Make-Up Class (private booking — 2 hrs, $179, no deposit)
+  {
+    id: "mother-daughter-make-up-class",
+    category: "mother-daughter",
+    name: "Mother Daughter Make-Up Class",
+    duration_minutes: 120,
+    padding_minutes: 30,
+    price_cents: 17900,
+    active: true,
+  },
+
   // Admin-only services (never visible to clients)
   {
     id: "treatment-plan-facial",

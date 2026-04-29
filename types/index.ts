@@ -6,7 +6,8 @@ export type ServiceCategory =
   | "led-light-treatments"
   | "make-up"
   | "treatment-plans"
-  | "admin-only";
+  | "admin-only"
+  | "mother-daughter";
 
 export interface Service {
   id: string;

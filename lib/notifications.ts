@@ -246,6 +246,43 @@ export async function sendClassBookingCancellation(params: Omit<ClassNotifyParam
   }
 }
 
+// ── Class booking moved (admin reschedule) ───────────────────────────────
+
+export interface ClassMoveParams {
+  className: string;
+  newStartISO: string;
+  client: NotifyClient;
+}
+
+export async function sendClassBookingMoved(params: ClassMoveParams) {
+  const { className, newStartISO, client } = params;
+  const displayDate = aestDate(newStartISO);
+  const displayTime = aestTime(newStartISO);
+  const displayDay  = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Brisbane",
+    weekday: "long",
+  }).format(new Date(newStartISO));
+
+  try {
+    await sendEmail(
+      client.email,
+      "Your Cocoon Make-Up Class has been rescheduled",
+      buildClassMovedEmail({ client, className, displayDate, displayTime }),
+    );
+  } catch (err) {
+    console.error("[notifications] class moved email failed:", err);
+  }
+
+  try {
+    await sendSMS(
+      client.mobile,
+      `Hi ${client.first_name}, your Make-Up Class at Cocoon has been moved to ${displayDay}, ${displayDate} at ${displayTime}. Questions? Reply to this message. – Amanda`,
+    );
+  } catch (err) {
+    console.error("[notifications] class moved SMS failed:", err);
+  }
+}
+
 // ── 48-hour appointment reminder ──────────────────────────────────────────
 
 export interface ReminderParams {
@@ -427,6 +464,50 @@ function buildClassConfirmationEmail(p: {
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
       Need to cancel? Please contact Amanda at least 48 hours before your class.
+    </p>
+  `);
+}
+
+function buildClassMovedEmail(p: {
+  client: NotifyClient;
+  className: string;
+  displayDate: string;
+  displayTime: string;
+}) {
+  return emailWrapper(`
+    <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;font-weight:400;
+               font-style:italic;color:#044e77;margin:0 0 8px;">
+      Your class has been rescheduled
+    </h1>
+    <p style="color:#7a6f68;font-size:15px;margin:0 0 32px;line-height:1.6;">
+      Hi ${p.client.first_name}, Amanda has moved your booking to a new session.
+      Your updated details are below.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f8f5f2;border-radius:10px;padding:24px;margin-bottom:32px;">
+      <tr><td style="padding-bottom:12px;">
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Class</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.className}</strong>
+      </td></tr>
+      <tr><td style="padding-bottom:12px;">
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">New Date</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.displayDate}</strong>
+      </td></tr>
+      <tr><td>
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">New Time</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.displayTime}</strong>
+      </td></tr>
+    </table>
+    <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
+      <strong style="color:#1a1a1a;">Location</strong><br>
+      Cocoon Skin &amp; Beauty<br>
+      16 Bunderoo Circuit, Pimpama QLD 4209
+    </p>
+    <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
+              border-top:1px solid #f0ebe4;padding-top:20px;">
+      Questions? Contact Amanda directly at
+      <a href="mailto:amanda@cocoonskinandbeauty.com.au"
+         style="color:#044e77;text-decoration:none;">amanda@cocoonskinandbeauty.com.au</a>
     </p>
   `);
 }

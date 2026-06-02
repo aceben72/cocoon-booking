@@ -1019,3 +1019,61 @@ function buildAppointmentCancellationEmail(p: {
     </p>
   `);
 }
+
+// ── Mailchimp ─────────────────────────────────────────────────────────────
+
+const MAILCHIMP_AUDIENCE_ID = "89c5fafdee";
+
+const MAILCHIMP_TAG_MAP: Record<string, { new: string; returning: string }> = {
+  facials:                 { new: "post-facial-new",             returning: "post-facial-returning" },
+  "treatment-plans":       { new: "post-treatment-plan-new",     returning: "post-treatment-plan-returning" },
+  "make-up":               { new: "post-makeup-application-new", returning: "post-makeup-application-returning" },
+  "mother-daughter":       { new: "post-makeup-class-new",       returning: "post-makeup-class-returning" },
+  "brow-treatments":       { new: "post-brow-new",               returning: "post-brow-returning" },
+  "led-light-treatments":  { new: "post-led-new",                returning: "post-led-returning" },
+};
+
+export async function upsertMailchimpContact(params: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  serviceCategory: string;
+  isNewClient: boolean;
+}) {
+  const apiKey = process.env.MAILCHIMP_API_KEY;
+  if (!apiKey) return;
+
+  const server = apiKey.split("-").pop() ?? "us3";
+  const tags = MAILCHIMP_TAG_MAP[params.serviceCategory];
+  if (!tags) return;
+
+  const tag = params.isNewClient ? tags.new : tags.returning;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const subscriberHash = (require("crypto") as typeof import("crypto"))
+    .createHash("md5")
+    .update(params.email.toLowerCase())
+    .digest("hex");
+
+  const base = `https://${server}.api.mailchimp.com/3.0`;
+  const auth = Buffer.from(`anystring:${apiKey}`).toString("base64");
+  const headers = {
+    Authorization: `Basic ${auth}`,
+    "Content-Type": "application/json",
+  };
+
+  await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      email_address: params.email.toLowerCase(),
+      status_if_new: "subscribed",
+      merge_fields: { FNAME: params.firstName, LNAME: params.lastName },
+    }),
+  });
+
+  await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tags: [{ name: tag, status: "active" }] }),
+  });
+}

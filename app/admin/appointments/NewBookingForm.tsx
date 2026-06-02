@@ -1,7 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { SERVICES, CATEGORY_META } from "@/lib/services-data";
+
+interface ClientSuggestion {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  mobile: string;
+}
 
 const TIME_OPTIONS: { value: string; label: string }[] = [];
 for (let h = 8; h <= 19; h++) {
@@ -44,6 +52,69 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   const [success, setSuccess]       = useState<{ name: string; paymentUrl?: string; noCharge?: boolean } | null>(null);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [conflictChecking, setConflictChecking] = useState(false);
+
+  // ── Client autocomplete ──────────────────────────────────────────────────
+  const [suggestions, setSuggestions]       = useState<ClientSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIdx, setHighlightedIdx] = useState(-1);
+  const autocompleteRef = useRef<HTMLDivElement>(null);
+
+  // Debounced fetch on firstName change
+  useEffect(() => {
+    setSuggestions([]);
+    setShowSuggestions(false);
+    const q = firstName.trim();
+    if (q.length < 2) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/clients?q=${encodeURIComponent(q)}`);
+        if (!res.ok) return;
+        const data = await res.json() as ClientSuggestion[];
+        setSuggestions(data.slice(0, 8));
+        setShowSuggestions(data.length > 0);
+        setHighlightedIdx(-1);
+      } catch { /* silently ignore */ }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [firstName]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (autocompleteRef.current && !autocompleteRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function selectClient(c: ClientSuggestion) {
+    setFirstName(c.first_name);
+    setLastName(c.last_name);
+    setEmail(c.email);
+    setMobile(c.mobile ?? "");
+    setSuggestions([]);
+    setShowSuggestions(false);
+  }
+
+  function handleFirstNameKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIdx((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && highlightedIdx >= 0) {
+      e.preventDefault();
+      selectClient(suggestions[highlightedIdx]);
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+    }
+  }
 
   const selectedService = allAdminServices.find((s) => s.id === serviceId);
   // Auto-enable no-charge for admin-only (zero-price) services
@@ -271,19 +342,44 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
           )}
         </div>
 
-        {/* First name */}
-        <div>
+        {/* First name — with client autocomplete */}
+        <div ref={autocompleteRef} className="relative">
           <label className="block text-xs uppercase tracking-wider text-[#7a6f68] mb-1.5">First Name</label>
           <input
             type="text"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
+            onKeyDown={handleFirstNameKeyDown}
+            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
             required
+            autoComplete="off"
             placeholder="Jane"
             className="w-full h-10 border border-[#ddd8d2] rounded-lg px-3 text-sm text-[#1a1a1a] bg-white
                        focus:outline-none focus:border-[#044e77] focus:ring-1 focus:ring-[#044e77]/20
                        placeholder:text-[#c0b4ab]"
           />
+          {showSuggestions && suggestions.length > 0 && (
+            <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-[#ddd8d2] rounded-lg shadow-lg overflow-hidden">
+              {suggestions.map((c, i) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onMouseDown={() => selectClient(c)}
+                    className={`w-full text-left px-3 py-2.5 text-sm transition-colors ${
+                      i === highlightedIdx
+                        ? "bg-[#044e77] text-white"
+                        : "text-[#1a1a1a] hover:bg-[#f8f5f2]"
+                    }`}
+                  >
+                    <span className="font-medium">{c.first_name} {c.last_name}</span>
+                    <span className={`ml-2 text-xs ${i === highlightedIdx ? "text-blue-200" : "text-[#9a8f87]"}`}>
+                      {c.email}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Last name */}

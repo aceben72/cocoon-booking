@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendRescheduleNotification, sendAppointmentCancellation } from "@/lib/notifications";
+import { sendRescheduleNotification, sendAppointmentCancellation, upsertMailchimpContact } from "@/lib/notifications";
 
 function supabase() {
   return createClient(
@@ -87,8 +87,8 @@ export async function PATCH(
     .from("appointments")
     .select(`
       start_datetime,
-      services ( name, duration_minutes ),
-      clients ( first_name, last_name, email, mobile )
+      services ( name, duration_minutes, category ),
+      clients ( first_name, last_name, email, mobile, is_new_client )
     `)
     .eq("id", id)
     .single();
@@ -117,6 +117,21 @@ export async function PATCH(
         .from("clients")
         .update({ is_new_client: false })
         .eq("id", data.client_id);
+    }
+  }
+
+  // Mailchimp upsert + tag on completion
+  if (status === "completed" && apptDetails) {
+    const clientData = apptDetails.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean } | null;
+    const svcData    = apptDetails.services as unknown as { name: string; duration_minutes: number; category: string } | null;
+    if (clientData?.email && svcData?.category) {
+      upsertMailchimpContact({
+        email: clientData.email,
+        firstName: clientData.first_name,
+        lastName: clientData.last_name,
+        serviceCategory: svcData.category,
+        isNewClient: clientData.is_new_client,
+      }).catch(console.error);
     }
   }
 

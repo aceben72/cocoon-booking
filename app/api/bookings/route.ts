@@ -5,7 +5,7 @@ import { aestToUTC, normaliseMobile } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
-import { sendAdminBookingNotification } from "@/lib/notifications";
+import { sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
 import type { ClientDetailsForm } from "@/types";
 
 interface BookingRequest {
@@ -413,6 +413,15 @@ export async function POST(request: NextRequest) {
     } catch (intakeEx) {
       console.error("[bookings] intake form insert threw:", intakeEx);
     }
+  }
+
+  // ── Mailchimp: tag facial-booked on creation ─────────────────────────
+  if (service.category === "facials") {
+    tagMailchimpFacialBooked({
+      email: client.email,
+      firstName: client.first_name,
+      lastName: client.last_name,
+    }).catch((err) => console.error("[bookings] mailchimp facial-booked tag failed:", err));
   }
 
   // ── Send confirmation notifications ──────────────────────────────────

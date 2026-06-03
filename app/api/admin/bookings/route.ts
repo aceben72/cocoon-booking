@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { randomUUID, randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
-import { sendPaymentRequest, sendAppointmentConfirmation, sendAdminBookingNotification } from "@/lib/notifications";
+import { sendPaymentRequest, sendAppointmentConfirmation, sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
 
 function supabase() {
   return createClient(
@@ -180,6 +180,15 @@ export async function POST(request: NextRequest) {
     } catch (intakeEx) {
       console.error("[admin/bookings] intake form insert threw:", intakeEx);
     }
+  }
+
+  // ── Mailchimp: tag facial-booked on creation ─────────────────────────
+  if (service.category === "facials") {
+    tagMailchimpFacialBooked({
+      email,
+      firstName,
+      lastName,
+    }).catch((err) => console.error("[admin/bookings] mailchimp facial-booked tag failed:", err));
   }
 
   if (isNoCharge) {

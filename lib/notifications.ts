@@ -1033,6 +1033,45 @@ const MAILCHIMP_TAG_MAP: Record<string, { new: string; returning: string }> = {
   "led-light-treatments":  { new: "post-led-new",                returning: "post-led-returning" },
 };
 
+export async function tagMailchimpFacialBooked(params: {
+  email: string;
+  firstName: string;
+  lastName: string;
+}) {
+  const apiKey = process.env.MAILCHIMP_API_KEY;
+  if (!apiKey) return;
+
+  const server = apiKey.split("-").pop() ?? "us3";
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const subscriberHash = (require("crypto") as typeof import("crypto"))
+    .createHash("md5")
+    .update(params.email.toLowerCase())
+    .digest("hex");
+
+  const base = `https://${server}.api.mailchimp.com/3.0`;
+  const auth = Buffer.from(`anystring:${apiKey}`).toString("base64");
+  const headers = {
+    Authorization: `Basic ${auth}`,
+    "Content-Type": "application/json",
+  };
+
+  await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      email_address: params.email.toLowerCase(),
+      status_if_new: "subscribed",
+      merge_fields: { FNAME: params.firstName, LNAME: params.lastName },
+    }),
+  });
+
+  await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tags: [{ name: "facial-booked", status: "active" }] }),
+  });
+}
+
 export async function upsertMailchimpContact(params: {
   email: string;
   firstName: string;

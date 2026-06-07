@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendClassBookingCancellation } from "@/lib/notifications";
+import { sendClassBookingCancellation, upsertMailchimpContact } from "@/lib/notifications";
 
 function supabase() {
   return createClient(
@@ -110,6 +110,38 @@ export async function PATCH(
       .single();
 
     return NextResponse.json({ ok: true, session: updated ?? data });
+  }
+
+  // ── Complete session (action: "complete") ────────────────────────────────
+  if (body.action === "complete") {
+    const { data: session } = await supabase()
+      .from("class_sessions")
+      .select("class_type")
+      .eq("id", id)
+      .single();
+
+    const { data: bookings } = await supabase()
+      .from("class_bookings")
+      .select("id, clients(first_name, last_name, email, mobile, is_new_client)")
+      .eq("session_id", id)
+      .eq("status", "confirmed");
+
+    for (const booking of bookings ?? []) {
+      const client = booking.clients as unknown as {
+        first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean;
+      } | null;
+      if (client?.email && session?.class_type) {
+        upsertMailchimpContact({
+          email:           client.email,
+          firstName:       client.first_name,
+          lastName:        client.last_name,
+          serviceCategory: session.class_type,
+          isNewClient:     client.is_new_client,
+        }).catch(console.error);
+      }
+    }
+
+    return NextResponse.json({ ok: true, taggedCount: (bookings ?? []).length });
   }
 
   // ── Cancel session (default / action: "cancel") ───────────────────────────

@@ -141,6 +141,8 @@ export default function SessionDetail({
   const [bookings, setBookings] = useState(initialBookings);
   const [cancelling, setCancelling]     = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [completing, setCompleting]     = useState(false);
+  const [completed, setCompleted]       = useState(false);
 
   // Edit state
   const [editing, setEditing]         = useState(false);
@@ -200,6 +202,22 @@ export default function SessionDetail({
       setEditError(data.error ?? "Failed to save changes.");
     }
     setSaving(false);
+  }
+
+  async function markComplete() {
+    if (!confirm(`Mark this session complete? Mailchimp tags will be applied to ${confirmedBookings.length} client(s).`)) return;
+    setCompleting(true);
+    const res = await fetch(`/api/admin/classes/${session.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "complete" }),
+    });
+    if (res.ok) {
+      setCompleted(true);
+    } else {
+      alert("Failed to mark session complete");
+    }
+    setCompleting(false);
   }
 
   async function cancelSession() {
@@ -346,6 +364,16 @@ export default function SessionDetail({
                                hover:border-[#044e77] hover:bg-[#044e77]/5 transition-colors"
                   >
                     Edit
+                  </button>
+                )}
+                {confirmedBookings.length > 0 && !editing && (
+                  <button
+                    onClick={markComplete}
+                    disabled={completing || completed}
+                    className="text-sm px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700
+                               hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                  >
+                    {completed ? "✓ Complete" : completing ? "Completing…" : "Mark Complete"}
                   </button>
                 )}
                 {confirmedBookings.length > 0 && !editing && (

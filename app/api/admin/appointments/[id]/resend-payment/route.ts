@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "crypto";
 import { sendPaymentRequest } from "@/lib/notifications";
 
 function supabase() {
@@ -45,27 +46,28 @@ export async function POST(
     );
   }
 
+  let token = a.payment_link_token;
+
+  // If the existing link has expired, issue a fresh token + expiry instead
+  // of refusing to resend.
   if (a.payment_link_token_expires_at && new Date(a.payment_link_token_expires_at) < new Date()) {
-    return NextResponse.json({ error: "Payment link has expired" }, { status: 410 });
+    token = randomUUID();
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60_000).toISOString();
+
+    const { error: updateErr } = await supabase()
+      .from("appointments")
+      .update({
+        payment_link_token: token,
+        payment_link_token_expires_at: expiresAt,
+      })
+      .eq("id", id);
+
+    if (updateErr) {
+      return NextResponse.json(
+        { error: `Failed to refresh payment link: ${updateErr.message}` },
+        { status: 500 },
+      );
+    }
   }
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (request.headers.get("origin") || "http://localhost:3000");
-
-  const paymentUrl = `${appUrl}/pay/${a.payment_link_token}`;
-
-  await sendPaymentRequest({
-    serviceName: a.services?.name ?? "appointment",
-    startISO:    a.start_datetime,
-    paymentUrl,
-    client: {
-      first_name: a.clients?.first_name ?? "",
-      last_name:  a.clients?.last_name  ?? "",
-      email:      a.clients?.email      ?? "",
-      mobile:     a.clients?.mobile     ?? "",
-    },
-  });
-
-  return NextResponse.json({ success: true });
-}
+  const

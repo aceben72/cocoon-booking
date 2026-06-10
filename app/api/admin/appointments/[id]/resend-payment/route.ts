@@ -70,4 +70,23 @@ export async function POST(
     }
   }
 
-  const
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ??
+    (request.headers.get("origin") || "http://localhost:3000");
+
+  const paymentUrl = `${appUrl}/pay/${token}`;
+
+  await sendPaymentRequest({
+    serviceName: a.services?.name ?? "appointment",
+    startISO:    a.start_datetime,
+    paymentUrl,
+    client: {
+      first_name: a.clients?.first_name ?? "",
+      last_name:  a.clients?.last_name  ?? "",
+      email:      a.clients?.email      ?? "",
+      mobile:     a.clients?.mobile     ?? "",
+    },
+  });
+
+  return NextResponse.json({ success: true });
+}

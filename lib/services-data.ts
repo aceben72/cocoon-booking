@@ -74,7 +74,7 @@ export const SERVICES: Service[] = [
     name: "Purity Herbal Peeling System",
     duration_minutes: 75,
     padding_minutes: 30,
-    price_cents: 89400,
+    price_cents: 96200,
     deposit_cents: 52700,
     description: "Specifically for those with acne skin or excess oiliness in both teenage and mature age skin.",
     active: true,

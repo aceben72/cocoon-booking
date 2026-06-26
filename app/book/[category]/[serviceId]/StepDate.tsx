@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { Service } from "@/types";
 import { isBookableDate, DEFAULT_AVAILABILITY } from "@/lib/availability";
 import { toAESTDateString } from "@/lib/utils";
@@ -41,6 +41,39 @@ export default function StepDate({ service, onSelect }: Props) {
     }
     return days;
   }, [calYear, calMonth]);
+
+  // Dates within this month view that are otherwise bookable (not past, not a closed day)
+  // and need a slot-availability check.
+  const candidateDates = useMemo(
+    () => calDays.filter((d): d is string => !!d && d >= todayStr && isBookableDate(d, DEFAULT_AVAILABILITY)),
+    [calDays, todayStr],
+  );
+
+  const [datesWithNoSlots, setDatesWithNoSlots] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (candidateDates.length === 0) {
+      setDatesWithNoSlots(new Set());
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/availability?serviceId=${service.id}&dates=${candidateDates.join(",")}`)
+      .then((res) => res.json())
+      .then((data: { availability?: Record<string, string[]> }) => {
+        if (cancelled || !data.availability) return;
+        const empty = new Set<string>();
+        for (const [d, slots] of Object.entries(data.availability)) {
+          if (slots.length === 0) empty.add(d);
+        }
+        setDatesWithNoSlots(empty);
+      })
+      .catch(() => {
+        // If the check fails, fall back to the static weekly-schedule rule only.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [service.id, candidateDates]);
 
   const canGoPrev = calYear > today.getFullYear() || calMonth > today.getMonth();
   const canGoNext = useMemo(() => {
@@ -108,7 +141,7 @@ export default function StepDate({ service, onSelect }: Props) {
           {calDays.map((dateStr, i) => {
             if (!dateStr) return <div key={`empty-${i}`} />;
 
-            const bookable = isBookableDate(dateStr, DEFAULT_AVAILABILITY);
+            const bookable = isBookableDate(dateStr, DEFAULT_AVAILABILITY) && !datesWithNoSlots.has(dateStr);
             const isPast = dateStr < todayStr;
 
             return (

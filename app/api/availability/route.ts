@@ -5,19 +5,19 @@ import { getAvailableSlots, DEFAULT_AVAILABILITY } from "@/lib/availability";
 /**
  * GET /api/availability?serviceId=xxx&date=YYYY-MM-DD
  * Returns available time slots for a service on a given AEST date.
+ *
+ * GET /api/availability?serviceId=xxx&dates=YYYY-MM-DD,YYYY-MM-DD,...
+ * Batch mode: returns { availability: { [date]: string[] } } so the calendar
+ * can determine which dates have zero slots without one request per date.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const serviceId = searchParams.get("serviceId");
   const date = searchParams.get("date");
+  const datesParam = searchParams.get("dates");
 
-  if (!serviceId || !date) {
-    return NextResponse.json({ error: "serviceId and date are required" }, { status: 400 });
-  }
-
-  // Validate date format
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return NextResponse.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });
+  if (!serviceId || (!date && !datesParam)) {
+    return NextResponse.json({ error: "serviceId and date (or dates) are required" }, { status: 400 });
   }
 
   const service = SERVICES.find((s) => s.id === serviceId);
@@ -25,6 +25,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Service not found" }, { status: 404 });
   }
 
+  if (datesParam) {
+    const dates = datesParam.split(",").map((d) => d.trim()).filter(Boolean);
+    if (dates.some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d))) {
+      return NextResponse.json({ error: "dates must be YYYY-MM-DD" }, { status: 400 });
+    }
+    const results = await Promise.all(
+      dates.map(async (d) => [d, await getSlotsForDate(service, d)] as const),
+    );
+    const availability: Record<string, string[]> = {};
+    for (const [d, slots] of results) availability[d] = slots;
+    return NextResponse.json({ availability });
+  }
+
+  // Validate date format
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date!)) {
+    return NextResponse.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });
+  }
+
+  const filtered = await getSlotsForDate(service, date!);
+  return NextResponse.json({ slots: filtered });
+}
+
+async function getSlotsForDate(
+  service: (typeof SERVICES)[number],
+  date: string,
+): Promise<string[]> {
   let existingBookings: { start: string; end: string }[] = [];
   let blockedPeriods: { start: string; end: string }[] = [];
 
@@ -150,5 +176,5 @@ export async function GET(request: NextRequest) {
     return slotUTC >= minBookingTime;
   });
 
-  return NextResponse.json({ slots: filtered });
+  return filtered;
 }

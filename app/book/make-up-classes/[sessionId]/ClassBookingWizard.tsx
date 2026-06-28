@@ -154,6 +154,7 @@ export default function ClassBookingWizard({ session, backPath = "/book/make-up-
             onBack={() => { /* back goes to session list */ }}
             backLabel="Back to sessions"
             backHref={backPath}
+            showNewClientCheckbox={false}
           />
         )}
 

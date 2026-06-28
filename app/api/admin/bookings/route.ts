@@ -200,6 +200,7 @@ export async function POST(request: NextRequest) {
       amountPaidCents: 0,
       startISO,
       intakeFormUrl,
+      isNewClient:     false,
       client: { first_name: firstName, last_name: lastName, email, mobile },
     }).catch(console.error);
 

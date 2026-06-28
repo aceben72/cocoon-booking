@@ -78,11 +78,12 @@ export interface AppointmentNotifyParams {
   amountPaidCents: number;
   startISO: string;
   intakeFormUrl?: string | null;
+  isNewClient?: boolean;
   client: NotifyClient;
 }
 
 export async function sendAppointmentConfirmation(params: AppointmentNotifyParams) {
-  const { serviceName, durationMinutes, priceCents, amountPaidCents, startISO, intakeFormUrl, client } = params;
+  const { serviceName, durationMinutes, priceCents, amountPaidCents, startISO, intakeFormUrl, isNewClient, client } = params;
   const displayDate = aestDate(startISO);
   const displayTime = aestTime(startISO);
   const mins = durationMinutes % 60;
@@ -96,7 +97,7 @@ export async function sendAppointmentConfirmation(params: AppointmentNotifyParam
     await sendEmail(
       client.email,
       "Your Cocoon appointment is confirmed ✨",
-      buildAppointmentConfirmationEmail({ client, serviceName, displayDate, displayTime, duration, amountPaid, outstanding, intakeFormUrl: intakeFormUrl ?? null }),
+      buildAppointmentConfirmationEmail({ client, serviceName, displayDate, displayTime, duration, amountPaid, outstanding, intakeFormUrl: intakeFormUrl ?? null, isNewClient: isNewClient ?? false }),
     );
     console.log("[notifications] appointment confirmation email sent to:", client.email);
   } catch (err) {
@@ -107,7 +108,9 @@ export async function sendAppointmentConfirmation(params: AppointmentNotifyParam
   try {
     await sendSMS(
       client.mobile,
-      `Hi ${client.first_name}, your ${serviceName} at Cocoon is confirmed for ${displayDate} at ${displayTime}. See you then! – Amanda`,
+      isNewClient
+        ? `Hi ${client.first_name}, your ${serviceName} at Cocoon is confirmed for ${displayDate} at ${displayTime}. As a new client, please note your appointment starts at this time — the 15-minute consultation is included within your total appointment. See you then! – Amanda`
+        : `Hi ${client.first_name}, your ${serviceName} at Cocoon is confirmed for ${displayDate} at ${displayTime}. See you then! – Amanda`,
     );
     console.log("[notifications] appointment confirmation SMS sent to:", client.mobile);
   } catch (err) {
@@ -563,6 +566,7 @@ function buildAppointmentConfirmationEmail(p: {
   amountPaid: string;
   outstanding: number;
   intakeFormUrl?: string | null;
+  isNewClient?: boolean;
 }) {
   return emailWrapper(`
     <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;font-weight:400;
@@ -618,6 +622,14 @@ function buildAppointmentConfirmationEmail(p: {
         </a>
       </td></tr>
     </table>
+    ` : ""}
+    ${p.isNewClient ? `
+    <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;
+              background:#fff8f0;border-left:3px solid #fbb040;padding:12px 16px;
+              border-radius:0 8px 8px 0;">
+      A note for new clients: Your appointment starts at your booked time — there's no need to arrive early.
+      The 15-minute consultation with Amanda is included within your total appointment duration.
+    </p>
     ` : ""}
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">

@@ -173,6 +173,7 @@ export async function POST(
       amountPaidCents,
       startISO: appointment.start_datetime,
       intakeFormUrl,
+      isNewClient: clientData.is_new_client ?? false,
       client: {
         first_name: clientData.first_name,
         last_name: clientData.last_name,

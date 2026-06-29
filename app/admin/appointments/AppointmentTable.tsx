@@ -983,16 +983,19 @@ export function AppointmentTable({
     }
   }
 
-  async function updateStatus(id: string, status: string) {
+  async function updateStatus(id: string, status: string, expectedStatus?: string) {
     setUpdatingId(id);
     const res = await fetch(`/api/admin/appointments/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, expectedStatus }),
     });
     setUpdatingId(null);
     if (res.ok) {
       startTransition(() => router.refresh());
+    } else if (res.status === 409) {
+      alert("This appointment's status has changed since the page loaded. Refreshing…");
+      router.refresh();
     } else {
       alert("Failed to update status");
     }
@@ -1470,7 +1473,7 @@ export function AppointmentTable({
                                 disabled={updatingId === appt.id}
                                 onClick={() => {
                                   if (confirm(`Cancel appointment for ${appt.clients?.first_name}?`)) {
-                                    updateStatus(appt.id, "cancelled");
+                                    updateStatus(appt.id, "cancelled", "confirmed");
                                   }
                                 }}
                                 className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-600
@@ -1495,7 +1498,7 @@ export function AppointmentTable({
                               disabled={updatingId === appt.id}
                               onClick={() => {
                                 if (confirm("Cancel this appointment and release the time slot?")) {
-                                  updateStatus(appt.id, "cancelled");
+                                  updateStatus(appt.id, "cancelled", "pending_payment");
                                 }
                               }}
                               className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-600

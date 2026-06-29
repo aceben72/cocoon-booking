@@ -73,7 +73,7 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const { status } = body as { status?: string };
+  const { status, expectedStatus } = body as { status?: string; expectedStatus?: string };
 
   const allowed = ["confirmed", "completed", "cancelled"];
   if (!status || !allowed.includes(status)) {
@@ -93,14 +93,38 @@ export async function PATCH(
     .eq("id", id)
     .single();
 
-  const { data, error } = await db
+  // Guard against stale-data races: if the caller's UI was showing a status
+  // that has since changed (e.g. a payment webhook just confirmed an
+  // appointment that the admin's page still showed as pending_payment),
+  // refuse the update instead of silently cancelling the wrong state.
+  if (expectedStatus && apptDetails && apptDetails.status !== expectedStatus) {
+    return NextResponse.json(
+      { error: `Appointment status changed (now "${apptDetails.status}"), refresh and try again` },
+      { status: 409 },
+    );
+  }
+
+  let query = db
     .from("appointments")
     .update({ status })
-    .eq("id", id)
+    .eq("id", id);
+  if (expectedStatus) {
+    query = query.eq("status", expectedStatus);
+  }
+
+  const { data, error } = await query
     .select("id, status, client_id")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (error.code === "PGRST116") {
+      return NextResponse.json(
+        { error: "Appointment status changed, refresh and try again" },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   // Clear is_new_client if this client now has more than one confirmed/completed appointment
   if ((status === "confirmed" || status === "completed") && data.client_id) {

@@ -21,7 +21,7 @@ export default async function ClientsPage({
   // ── Fetch clients (optionally filtered) ──────────────────────────────────
   let clientQuery = supabase()
     .from("clients")
-    .select("id, first_name, last_name, email, mobile, is_new_client, created_at")
+    .select("id, first_name, last_name, email, mobile, is_new_client, notes, created_at")
     .order("created_at", { ascending: false });
 
   if (q) {

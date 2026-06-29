@@ -56,3 +56,24 @@ export async function GET(
     classBookings: classBookingsRes.data ?? [],
   });
 }
+
+// PATCH /api/admin/clients/[id]
+// Updates the client's notes.
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const body = await req.json() as { notes?: string | null };
+
+  const { error } = await supabase()
+    .from("clients")
+    .update({ notes: body.notes ?? null })
+    .eq("id", id);
+
+  if (error) {
+    return NextResponse.json({ error: "Failed to update notes" }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

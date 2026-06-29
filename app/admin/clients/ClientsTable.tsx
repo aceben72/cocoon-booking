@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 export interface ClientRow {
@@ -10,6 +10,7 @@ export interface ClientRow {
   email: string;
   mobile: string;
   is_new_client: boolean;
+  notes: string | null;
   created_at: string;
   firstVisit: string | null;
   lastVisit: string | null;
@@ -40,6 +41,79 @@ function SortIcon({ active, asc }: { active: boolean; asc: boolean }) {
   return <span className="ml-1 text-[#044e77]">{asc ? "↑" : "↓"}</span>;
 }
 
+// ── Inline client notes edit form ────────────────────────────────────────────
+
+function EditNotesForm({
+  clientId,
+  notes,
+  onCancel,
+  onSaved,
+}: {
+  clientId: string;
+  notes: string | null;
+  onCancel: () => void;
+  onSaved: (notes: string | null) => void;
+}) {
+  const [value, setValue] = useState(notes ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const next = value.trim() ? value : null;
+      const res = await fetch(`/api/admin/clients/${clientId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: next }),
+      });
+      if (!res.ok) {
+        const d = await res.json() as { error?: string };
+        setError(d.error ?? "Failed to save notes");
+        return;
+      }
+      onSaved(next);
+    } catch {
+      setError("An unexpected error occurred");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        rows={3}
+        className="w-full border border-[#ddd8d2] rounded-lg px-3 py-2 text-sm text-[#1a1a1a] bg-white
+                   focus:outline-none focus:border-[#044e77] focus:ring-1 focus:ring-[#044e77]/20
+                   resize-y"
+        placeholder="Add a note about this client…"
+      />
+      <div className="flex gap-2 mt-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="h-9 px-4 rounded-lg bg-[#044e77] text-white text-xs font-medium
+                     hover:bg-[#033d5c] disabled:opacity-50 transition-colors whitespace-nowrap"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={onCancel}
+          className="h-9 px-3 rounded-lg border border-[#ddd8d2] text-xs text-[#5a504a]
+                     hover:border-[#c0b4ab] transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+    </div>
+  );
+}
+
 export function ClientsTable({
   clients,
   initialQ,
@@ -53,6 +127,15 @@ export function ClientsTable({
   const [q, setQ]           = useState(initialQ);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);   // null = server default (lastVisit desc)
   const [sortAsc, setSortAsc] = useState(false);
+  const [expandedNotesId, setExpandedNotesId] = useState<string | null>(null);
+  const [localClients, setLocalClients] = useState(clients);
+
+  // Sync local copy when server-rendered props change (e.g. after a search)
+  const [prevClients, setPrevClients] = useState(clients);
+  if (clients !== prevClients) {
+    setPrevClients(clients);
+    setLocalClients(clients);
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -77,8 +160,8 @@ export function ClientsTable({
 
   // Apply client-side sort on top of the server-ordered list
   const sorted = sortKey === null
-    ? clients
-    : [...clients].sort((a, b) => {
+    ? localClients
+    : [...localClients].sort((a, b) => {
         let cmp = 0;
         if (sortKey === "name") {
           const na = `${a.last_name} ${a.first_name}`.toLowerCase();
@@ -171,56 +254,90 @@ export function ClientsTable({
             </thead>
             <tbody className="divide-y divide-[#f0ebe4]">
               {sorted.map((client) => (
-                <tr
-                  key={client.id}
-                  className="hover:bg-[#fdfcfb] cursor-pointer"
-                  onClick={() => router.push(`/admin/clients/${client.id}`)}
-                >
-                  {/* Name + badges */}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-[#1a1a1a]">
-                        {client.first_name} {client.last_name}
-                      </span>
-                      {client.is_new_client && (
-                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium
-                                         bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
-                          New
+                <React.Fragment key={client.id}>
+                  <tr
+                    className="hover:bg-[#fdfcfb] cursor-pointer"
+                    onClick={() => router.push(`/admin/clients/${client.id}`)}
+                  >
+                    {/* Name + badges */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-[#1a1a1a]">
+                          {client.first_name} {client.last_name}
                         </span>
-                      )}
-                      {client.intakeFormId && client.intakeFormStatus !== "pending" && (
-                        <a
-                          href={`/admin/intake/${client.intakeFormId}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0
-                            ${client.intakeFormStatus === "acknowledged"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-blue-50 text-blue-700 border-blue-200"
-                            }`}
+                        {client.is_new_client && (
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium
+                                           bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
+                            New
+                          </span>
+                        )}
+                        {client.intakeFormId && client.intakeFormStatus !== "pending" && (
+                          <a
+                            href={`/admin/intake/${client.intakeFormId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0
+                              ${client.intakeFormStatus === "acknowledged"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-blue-50 text-blue-700 border-blue-200"
+                              }`}
+                          >
+                            {client.intakeFormStatus === "acknowledged" ? "Intake ✓" : "Intake ↗"}
+                          </a>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedNotesId(expandedNotesId === client.id ? null : client.id);
+                          }}
+                          title={client.notes ? "Edit note" : "Add note"}
+                          className="shrink-0 text-xs text-[#9a8f87] hover:text-[#044e77] transition-colors"
                         >
-                          {client.intakeFormStatus === "acknowledged" ? "Intake ✓" : "Intake ↗"}
-                        </a>
+                          {client.notes ? "📝" : <span className="italic">Add note</span>}
+                        </button>
+                      </div>
+                      {/* Email visible on small screens where the column is hidden */}
+                      <div className="text-xs text-[#9a8f87] mt-0.5 lg:hidden">{client.email}</div>
+                      {client.notes && (
+                        <div className="text-xs text-[#c0b4ab] mt-0.5 lg:hidden truncate max-w-[200px]">
+                          {client.notes.length > 40 ? `${client.notes.slice(0, 40)}…` : client.notes}
+                        </div>
                       )}
-                    </div>
-                    {/* Email visible on small screens where the column is hidden */}
-                    <div className="text-xs text-[#9a8f87] mt-0.5 lg:hidden">{client.email}</div>
-                  </td>
-                  <td className="px-4 py-3 text-[#7a6f68] hidden lg:table-cell">{client.email}</td>
-                  <td className="px-4 py-3 text-[#7a6f68] hidden xl:table-cell">{client.mobile}</td>
-                  <td className="px-4 py-3 text-[#7a6f68] hidden md:table-cell">
-                    {formatDate(client.firstVisit)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={client.totalVisits === 0 ? "text-[#c0b4ab]" : "font-medium text-[#1a1a1a]"}>
-                      {client.totalVisits}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right hidden sm:table-cell">
-                    <span className={client.totalSpentCents === 0 ? "text-[#c0b4ab]" : "text-[#1a1a1a]"}>
-                      {formatMoney(client.totalSpentCents)}
-                    </span>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-4 py-3 text-[#7a6f68] hidden lg:table-cell">{client.email}</td>
+                    <td className="px-4 py-3 text-[#7a6f68] hidden xl:table-cell">{client.mobile}</td>
+                    <td className="px-4 py-3 text-[#7a6f68] hidden md:table-cell">
+                      {formatDate(client.firstVisit)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={client.totalVisits === 0 ? "text-[#c0b4ab]" : "font-medium text-[#1a1a1a]"}>
+                        {client.totalVisits}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right hidden sm:table-cell">
+                      <span className={client.totalSpentCents === 0 ? "text-[#c0b4ab]" : "text-[#1a1a1a]"}>
+                        {formatMoney(client.totalSpentCents)}
+                      </span>
+                    </td>
+                  </tr>
+                  {expandedNotesId === client.id && (
+                    <tr className="bg-[#f8f5f2]">
+                      <td colSpan={6} className="px-4 py-3 border-t border-b border-[#e8e0d8]" onClick={(e) => e.stopPropagation()}>
+                        <EditNotesForm
+                          clientId={client.id}
+                          notes={client.notes}
+                          onCancel={() => setExpandedNotesId(null)}
+                          onSaved={(next) => {
+                            setLocalClients((prev) =>
+                              prev.map((c) => (c.id === client.id ? { ...c, notes: next } : c)),
+                            );
+                            setExpandedNotesId(null);
+                            startTransition(() => router.refresh());
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

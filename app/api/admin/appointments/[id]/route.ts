@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendRescheduleNotification, sendAppointmentCancellation, upsertMailchimpContact } from "@/lib/notifications";
+import { sendRescheduleNotification, sendAppointmentCancellation, sendPendingPaymentCancellation, upsertMailchimpContact } from "@/lib/notifications";
 
 function supabase() {
   return createClient(
@@ -135,11 +135,19 @@ export async function PATCH(
     }
   }
 
-  // Cancellation notifications to client (skip for pending_payment — client was never confirmed)
-  if (status === "cancelled" && apptDetails && apptDetails.status !== "pending_payment") {
+  // Cancellation notifications to client
+  if (status === "cancelled" && apptDetails) {
     const clientData = apptDetails.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string } | null;
     const svcData    = apptDetails.services as unknown as { name: string; duration_minutes: number } | null;
-    if (clientData?.email && clientData?.mobile && svcData?.name) {
+    if (apptDetails.status === "pending_payment") {
+      if (clientData && svcData?.name) {
+        sendPendingPaymentCancellation({
+          serviceName: svcData.name,
+          startISO:    apptDetails.start_datetime,
+          client:      clientData,
+        }).catch(console.error);
+      }
+    } else if (clientData?.email && clientData?.mobile && svcData?.name) {
       sendAppointmentCancellation({
         serviceName: svcData.name,
         startISO:    apptDetails.start_datetime,

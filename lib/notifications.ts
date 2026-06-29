@@ -885,6 +885,35 @@ export async function sendAppointmentCancellation(params: AppointmentCancellatio
   }
 }
 
+// ── Client: pending_payment appointment cancellation (non-payment) ────────
+
+export async function sendPendingPaymentCancellation(params: AppointmentCancellationParams) {
+  const { serviceName, startISO, client } = params;
+  const displayDate = aestDate(startISO);
+  const displayTime = aestTime(startISO);
+  if (client.email) {
+    try {
+      await sendEmail(
+        client.email,
+        "Your Cocoon booking has been cancelled",
+        buildPendingPaymentCancellationEmail({ client, serviceName, displayDate, displayTime }),
+      );
+    } catch (err) {
+      console.error("[notifications] pending payment cancellation email failed:", err);
+    }
+  }
+  if (client.mobile) {
+    try {
+      await sendSMS(
+        client.mobile,
+        `Hi ${client.first_name}, your Cocoon booking for ${serviceName} on ${displayDate} has been cancelled as payment wasn't received. Rebook at book.cocoonskinandbeauty.com.au`,
+      );
+    } catch (err) {
+      console.error("[notifications] pending payment cancellation SMS failed:", err);
+    }
+  }
+}
+
 // ── Intake form submission notification (to Amanda) ───────────────────────
 
 export async function sendIntakeFormNotification(params: {
@@ -1028,6 +1057,51 @@ function buildAppointmentCancellationEmail(p: {
     <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
               border-top:1px solid #f0ebe4;padding-top:20px;">
       We look forward to welcoming you back to Cocoon soon.
+    </p>
+  `);
+}
+
+function buildPendingPaymentCancellationEmail(p: {
+  client: NotifyClient;
+  serviceName: string;
+  displayDate: string;
+  displayTime: string;
+}) {
+  return emailWrapper(`
+    <h1 style="font-family:'Cormorant Garamond',Georgia,serif;font-size:32px;font-weight:400;
+               font-style:italic;color:#044e77;margin:0 0 8px;">
+      Booking Cancelled
+    </h1>
+    <p style="color:#7a6f68;font-size:15px;margin:0 0 32px;line-height:1.6;">
+      Hi ${p.client.first_name}, we're letting you know that your booking has been cancelled as payment was not received within the required time.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="background:#f8f5f2;border-radius:10px;padding:24px;margin-bottom:32px;">
+      <tr><td style="padding-bottom:12px;">
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Service</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.serviceName}</strong>
+      </td></tr>
+      <tr><td style="padding-bottom:12px;">
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Date</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.displayDate}</strong>
+      </td></tr>
+      <tr><td>
+        <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Time</span><br>
+        <strong style="font-size:16px;color:#1a1a1a;">${p.displayTime}</strong>
+      </td></tr>
+    </table>
+    <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
+      If you'd still like to book, we'd love to see you — you can rebook online at
+      <a href="https://book.cocoonskinandbeauty.com.au" style="color:#044e77;text-decoration:none;">book.cocoonskinandbeauty.com.au</a>.
+    </p>
+    <p style="color:#7a6f68;font-size:14px;line-height:1.7;margin:0 0 24px;">
+      If you have any questions, please don't hesitate to get in touch.
+    </p>
+    <p style="color:#9a8f87;font-size:13px;line-height:1.7;margin:0;
+              border-top:1px solid #f0ebe4;padding-top:20px;">
+      Warm regards,<br>
+      Amanda<br>
+      Cocoon Skin &amp; Beauty
     </p>
   `);
 }

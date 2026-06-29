@@ -149,12 +149,19 @@ export async function PATCH(
     const clientData = apptDetails.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean } | null;
     const svcData    = apptDetails.services as unknown as { name: string; duration_minutes: number; category: string } | null;
     if (clientData?.email && svcData?.category) {
+      // Personal Make Up Class is booked as an appointment (category "make-up",
+      // shared with Professional Make-Up Application), so it needs its own tag
+      // mapping key plus the base "makeup-class" tag — group classes get that
+      // base tag from the cron job in app/api/cron/reminders, but appointments
+      // are never seen by that cron.
+      const isPersonalClass = svcData.name === "Personal Make Up Class";
       upsertMailchimpContact({
         email: clientData.email,
         firstName: clientData.first_name,
         lastName: clientData.last_name,
-        serviceCategory: svcData.category,
+        serviceCategory: isPersonalClass ? "personal-make-up-class" : svcData.category,
         isNewClient: clientData.is_new_client,
+        extraTags: isPersonalClass ? ["makeup-class"] : undefined,
       }).catch(console.error);
     }
   }

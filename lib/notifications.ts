@@ -1119,6 +1119,10 @@ const MAILCHIMP_TAG_MAP: Record<string, { new: string; returning: string }> = {
   "mother-daughter":       { new: "post-makeup-class-new",       returning: "post-makeup-class-returning" },
   "brow-treatments":       { new: "post-brow-new",               returning: "post-brow-returning" },
   "led-light-treatments":  { new: "post-led-new",                returning: "post-led-returning" },
+  // Personal Make Up Class is booked as an appointment with category "make-up"
+  // (shared with Professional Make-Up Application), so it needs its own key —
+  // matched by service name, not category, in the appointment completion handler.
+  "personal-make-up-class": { new: "post-makeup-class-new",      returning: "post-makeup-class-returning" },
 };
 
 export async function tagMailchimpFacialBooked(params: {
@@ -1166,15 +1170,20 @@ export async function upsertMailchimpContact(params: {
   lastName: string;
   serviceCategory: string;
   isNewClient: boolean;
+  extraTags?: string[];
 }) {
   const apiKey = process.env.MAILCHIMP_API_KEY;
   if (!apiKey) return;
 
   const server = apiKey.split("-").pop() ?? "us3";
   const tags = MAILCHIMP_TAG_MAP[params.serviceCategory];
-  if (!tags) return;
+  if (!tags) {
+    console.warn(`[mailchimp] no tag mapping for serviceCategory "${params.serviceCategory}" — skipping ${params.email}`);
+    return;
+  }
 
-  const tag = params.isNewClient ? tags.new : tags.returning;
+  const journeyTag = params.isNewClient ? tags.new : tags.returning;
+  const tagsToApply = [journeyTag, ...(params.extraTags ?? [])];
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const subscriberHash = (require("crypto") as typeof import("crypto"))
     .createHash("md5")
@@ -1188,7 +1197,7 @@ export async function upsertMailchimpContact(params: {
     "Content-Type": "application/json",
   };
 
-  await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}`, {
+  const memberRes = await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}`, {
     method: "PUT",
     headers,
     body: JSON.stringify({
@@ -1198,9 +1207,22 @@ export async function upsertMailchimpContact(params: {
     }),
   });
 
-  await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
+  if (!memberRes.ok) {
+    const err = await memberRes.json().catch(() => null);
+    console.error(`[mailchimp] member upsert failed for ${params.email}:`, JSON.stringify(err));
+    return;
+  }
+
+  const tagRes = await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ tags: [{ name: tag, status: "active" }] }),
+    body: JSON.stringify({ tags: tagsToApply.map((name) => ({ name, status: "active" })) }),
   });
+
+  if (!tagRes.ok) {
+    const err = await tagRes.json().catch(() => null);
+    console.error(`[mailchimp] tag(s) [${tagsToApply.join(", ")}] failed for ${params.email}:`, JSON.stringify(err));
+  } else {
+    console.log(`[mailchimp] applied tag(s) [${tagsToApply.join(", ")}] to ${params.email}`);
+  }
 }

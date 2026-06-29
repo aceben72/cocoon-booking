@@ -86,7 +86,7 @@ export async function PATCH(
   const { data: apptDetails } = await db
     .from("appointments")
     .select(`
-      start_datetime,
+      start_datetime, status,
       services ( name, duration_minutes, category ),
       clients ( first_name, last_name, email, mobile, is_new_client )
     `)
@@ -135,8 +135,8 @@ export async function PATCH(
     }
   }
 
-  // Cancellation notifications to client
-  if (status === "cancelled" && apptDetails) {
+  // Cancellation notifications to client (skip for pending_payment — client was never confirmed)
+  if (status === "cancelled" && apptDetails && apptDetails.status !== "pending_payment") {
     const clientData = apptDetails.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string } | null;
     const svcData    = apptDetails.services as unknown as { name: string; duration_minutes: number } | null;
     if (clientData?.email && clientData?.mobile && svcData?.name) {

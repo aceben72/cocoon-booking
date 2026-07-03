@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { AppointmentTable } from "./AppointmentTable";
+import { parseAESTDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -82,10 +83,9 @@ async function getAppointments(status: string, from: string, to: string): Promis
 
   if (status !== "all") query = query.eq("status", status);
   query = query.neq("status", "cancelled");
-  if (from) query = query.gte("start_datetime", new Date(from).toISOString());
+  if (from) query = query.gte("start_datetime", parseAESTDate(from).toISOString());
   if (to) {
-    const toDate = new Date(to);
-    toDate.setDate(toDate.getDate() + 1);
+    const toDate = new Date(parseAESTDate(to).getTime() + 24 * 60 * 60 * 1000);
     query = query.lt("start_datetime", toDate.toISOString());
   }
 
@@ -100,10 +100,9 @@ async function getBlockedPeriods(from: string, to: string): Promise<RawBlockedPe
     .select("id, start_datetime, end_datetime, reason")
     .order("start_datetime", { ascending: true });
 
-  if (from) query = query.gte("start_datetime", new Date(from).toISOString());
+  if (from) query = query.gte("start_datetime", parseAESTDate(from).toISOString());
   if (to) {
-    const toDate = new Date(to);
-    toDate.setDate(toDate.getDate() + 1);
+    const toDate = new Date(parseAESTDate(to).getTime() + 24 * 60 * 60 * 1000);
     query = query.lt("start_datetime", toDate.toISOString());
   }
 
@@ -122,10 +121,9 @@ async function getClassSessions(from: string, to: string): Promise<RawClassSessi
     .order("start_datetime", { ascending: true })
     .eq("active", true);
 
-  if (from) query = query.gte("start_datetime", new Date(from).toISOString());
+  if (from) query = query.gte("start_datetime", parseAESTDate(from).toISOString());
   if (to) {
-    const toDate = new Date(to);
-    toDate.setDate(toDate.getDate() + 1);
+    const toDate = new Date(parseAESTDate(to).getTime() + 24 * 60 * 60 * 1000);
     query = query.lt("start_datetime", toDate.toISOString());
   }
 

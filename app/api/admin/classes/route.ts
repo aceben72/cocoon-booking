@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { parseAESTDate } from "@/lib/utils";
 
 function supabase() {
   return createClient(
@@ -28,11 +29,10 @@ export async function GET(request: NextRequest) {
       .eq("active", true);
 
     if (from) {
-      query = query.gte("start_datetime", new Date(from).toISOString());
+      query = query.gte("start_datetime", parseAESTDate(from).toISOString());
     }
     if (to) {
-      const toDate = new Date(to);
-      toDate.setDate(toDate.getDate() + 1);
+      const toDate = new Date(parseAESTDate(to).getTime() + 24 * 60 * 60 * 1000);
       query = query.lt("start_datetime", toDate.toISOString());
     }
 

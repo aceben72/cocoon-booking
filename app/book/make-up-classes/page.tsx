@@ -7,6 +7,19 @@ import AllCategoriesLink from "../AllCategoriesLink";
 
 export const dynamic = "force-dynamic";
 
+// Friendly external slugs (for deep links, e.g. ?service=everyday-essentials)
+// mapped to the internal class_type — same alias convention as DeepLinkGate.
+const SERVICE_SLUG_TO_CLASS_TYPE: Record<string, ClassType> = {
+  "everyday-essentials": "masterclass",
+  "advanced-techniques": "advanced_class",
+};
+
+const FILTERABLE_TYPES: ClassType[] = ["masterclass", "advanced_class"];
+
+const CLASS_TYPE_TO_SERVICE_SLUG: Record<string, string> = Object.fromEntries(
+  Object.entries(SERVICE_SLUG_TO_CLASS_TYPE).map(([slug, type]) => [type, slug]),
+);
+
 async function getSessions(): Promise<ClassSessionWithAvailability[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -41,8 +54,20 @@ function formatSessionDateTime(iso: string) {
   return `${date}, ${time}`;
 }
 
-export default async function MakeUpClassesPage() {
+export default async function MakeUpClassesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ service?: string }>;
+}) {
+  const { service } = await searchParams;
+
+  // Unknown/missing slugs fall back gracefully to no filter (current default).
+  const selectedType = service ? SERVICE_SLUG_TO_CLASS_TYPE[service.toLowerCase().trim()] : undefined;
+
   const sessions = await getSessions();
+  const visibleSessions = selectedType
+    ? sessions.filter((s) => s.class_type === selectedType)
+    : sessions;
 
   return (
     <>
@@ -60,7 +85,31 @@ export default async function MakeUpClassesPage() {
           </p>
         </div>
 
-        {sessions.length === 0 ? (
+        {/* Class type toggle — lets the client narrow to one class, or view both */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {[
+            { slug: undefined, label: "All Classes" },
+            ...FILTERABLE_TYPES.map((type) => ({ slug: type, label: CLASS_TYPE_CONFIG[type].label })),
+          ].map(({ slug, label }) => {
+            const isActive = slug === selectedType;
+            return (
+              <Link
+                key={label}
+                href={slug ? `/book/make-up-classes?service=${CLASS_TYPE_TO_SERVICE_SLUG[slug]}` : "/book/make-up-classes"}
+                className={[
+                  "text-xs px-3 py-1.5 rounded-full border transition-colors font-medium",
+                  isActive
+                    ? "bg-[#044e77] border-[#044e77] text-white"
+                    : "border-[#ddd8d2] text-[#7a6f68] hover:border-[#044e77] hover:text-[#044e77]",
+                ].join(" ")}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+
+        {visibleSessions.length === 0 ? (
           <div className="bg-white rounded-2xl border border-[#e8e0d8] p-10 text-center">
             <p className="font-[family-name:var(--font-cormorant)] text-2xl italic text-[#044e77] mb-3">
               No classes scheduled yet
@@ -71,7 +120,7 @@ export default async function MakeUpClassesPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            {sessions.map((session) => {
+            {visibleSessions.map((session) => {
               const full     = session.spots_remaining <= 0;
               const classConfig = CLASS_TYPE_CONFIG[session.class_type as ClassType];
               const typeLabel = classConfig?.label ?? session.title;

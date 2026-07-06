@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import ClassBookingWizard from "./ClassBookingWizard";
-import type { ClassSessionWithAvailability } from "@/types";
+import type { ClassSessionWithAvailability, ClassType } from "@/types";
+import { CLASS_TYPE_LABELS } from "@/lib/class-types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +22,6 @@ async function getSession(id: string): Promise<ClassSessionWithAvailability | nu
   return data as ClassSessionWithAvailability | null;
 }
 
-const CLASS_TYPE_LABELS: Record<string, string> = {
-  masterclass:     "Make-Up Masterclass",
-  mother_daughter: "Mother Daughter Make-Up Class",
-};
-
 export default async function ClassSessionPage({
   params,
 }: {
@@ -35,7 +31,7 @@ export default async function ClassSessionPage({
   const session = await getSession(sessionId);
   if (!session) notFound();
 
-  const title = CLASS_TYPE_LABELS[session.class_type] ?? session.title;
+  const title = CLASS_TYPE_LABELS[session.class_type as ClassType] ?? session.title;
 
   return <ClassBookingWizard session={{ ...session, title }} />;
 }

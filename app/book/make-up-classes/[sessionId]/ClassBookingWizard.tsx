@@ -2,11 +2,12 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import type { ClassSessionWithAvailability, ClientDetailsForm } from "@/types";
+import type { ClassSessionWithAvailability, ClientDetailsForm, ClassType } from "@/types";
 import StepDetails from "@/app/book/[category]/[serviceId]/StepDetails";
 import ClassStepPayment from "./ClassStepPayment";
 import ClassStepConfirmation from "./ClassStepConfirmation";
 import ClassBookingProgress from "./ClassBookingProgress";
+import { CLASS_TYPE_CONFIG } from "@/lib/class-types";
 
 type WizardStep = "details" | "payment" | "confirmation";
 
@@ -52,6 +53,7 @@ export default function ClassBookingWizard({ session, backPath = "/book/make-up-
 
   const maxQuantity = session.spots_remaining as number;
   const [quantity, setQuantity] = useState(1);
+  const pricePerTicket = CLASS_TYPE_CONFIG[session.class_type as ClassType].priceCents / 100;
 
   const progressStep = step === "details" ? 2 : 3;
 
@@ -82,7 +84,7 @@ export default function ClassBookingWizard({ session, backPath = "/book/make-up-
                   {session.title}
                 </h2>
                 <p className="text-sm text-[#9a8f87] font-light">
-                  {formatSessionDateTime(session.start_datetime)} · $89/person
+                  {formatSessionDateTime(session.start_datetime)} · ${pricePerTicket}/person
                 </p>
               </div>
               <Link
@@ -121,7 +123,7 @@ export default function ClassBookingWizard({ session, backPath = "/book/make-up-
                   </button>
                   {quantity > 1 && (
                     <span className="text-sm font-medium text-[#044e77] ml-1">
-                      = ${89 * quantity}
+                      = ${pricePerTicket * quantity}
                     </span>
                   )}
                 </div>
@@ -133,7 +135,7 @@ export default function ClassBookingWizard({ session, backPath = "/book/make-up-
               <div className="mt-3 pt-3 border-t border-[#f0ebe4] flex items-center justify-between text-sm">
                 <span className="text-[#9a8f87] font-light">Tickets</span>
                 <span className="font-medium text-[#1a1a1a]">
-                  {quantity} × $89 = <span className="text-[#044e77]">${89 * quantity}</span>
+                  {quantity} × ${pricePerTicket} = <span className="text-[#044e77]">${pricePerTicket * quantity}</span>
                 </span>
               </div>
             )}

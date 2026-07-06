@@ -1115,6 +1115,7 @@ const MAILCHIMP_TAG_MAP: Record<string, { new: string; returning: string }> = {
   "treatment-plans":       { new: "post-treatment-plan-new",     returning: "post-treatment-plan-returning" },
   "make-up":               { new: "post-makeup-application-new", returning: "post-makeup-application-returning" },
   masterclass:             { new: "post-makeup-class-new",       returning: "post-makeup-class-returning" },
+  advanced_class:          { new: "post-advanced-class-new",     returning: "post-advanced-class-returning" },
   mother_daughter:         { new: "post-makeup-class-new",       returning: "post-makeup-class-returning" },
   "mother-daughter":       { new: "post-makeup-class-new",       returning: "post-makeup-class-returning" },
   "brow-treatments":       { new: "post-brow-new",               returning: "post-brow-returning" },

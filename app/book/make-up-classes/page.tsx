@@ -1,15 +1,11 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import BookingProgress from "@/components/BookingProgress";
-import type { ClassSessionWithAvailability } from "@/types";
+import type { ClassSessionWithAvailability, ClassType } from "@/types";
+import { CLASS_TYPE_CONFIG } from "@/lib/class-types";
 import AllCategoriesLink from "../AllCategoriesLink";
 
 export const dynamic = "force-dynamic";
-
-const CLASS_TYPE_LABELS: Record<string, string> = {
-  masterclass:      "Make-Up Masterclass",
-  mother_daughter:  "Mother Daughter Make-Up Class",
-};
 
 async function getSessions(): Promise<ClassSessionWithAvailability[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -77,7 +73,8 @@ export default async function MakeUpClassesPage() {
           <div className="flex flex-col gap-4">
             {sessions.map((session) => {
               const full     = session.spots_remaining <= 0;
-              const typeLabel = CLASS_TYPE_LABELS[session.class_type] ?? session.title;
+              const classConfig = CLASS_TYPE_CONFIG[session.class_type as ClassType];
+              const typeLabel = classConfig?.label ?? session.title;
 
               return (
                 <Link
@@ -110,8 +107,8 @@ export default async function MakeUpClassesPage() {
 
                   {/* Meta row */}
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-[#9a8f87] font-light">
-                    <span>3 hours</span>
-                    <span>$89 per person</span>
+                    <span>{classConfig?.durationLabel ?? "—"}</span>
+                    <span>${(classConfig?.priceCents ?? 0) / 100} per person</span>
                     <span
                       className={[
                         "font-medium",

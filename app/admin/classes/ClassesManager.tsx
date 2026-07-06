@@ -3,6 +3,8 @@
 import { useState, useEffect, useTransition, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { CLASS_TYPE_LABELS } from "@/lib/class-types";
+import type { ClassType } from "@/types";
 
 interface Session {
   id: string;
@@ -15,11 +17,6 @@ interface Session {
   description: string | null;
   active: boolean;
 }
-
-const CLASS_TYPE_LABELS: Record<string, string> = {
-  masterclass:     "Make-Up Masterclass",
-  mother_daughter: "Mother Daughter Make-Up Class",
-};
 
 function formatAEST(iso: string) {
   return new Intl.DateTimeFormat("en-AU", {
@@ -136,7 +133,7 @@ export function ClassesManager() {
               <tr key={s.id} className={muted ? "" : "hover:bg-[#fdfcfb]"}>
                 <td className="px-4 py-3">
                   <div className={`font-medium ${muted ? "text-[#7a6f68]" : "text-[#1a1a1a]"}`}>
-                    {CLASS_TYPE_LABELS[s.class_type] ?? s.title}
+                    {CLASS_TYPE_LABELS[s.class_type as ClassType] ?? s.title}
                   </div>
                   {s.description && (
                     <div className="text-xs text-[#7a6f68] mt-0.5 truncate max-w-xs">{s.description}</div>
@@ -233,8 +230,9 @@ export function ClassesManager() {
               className="h-10 border border-[#ddd8d2] rounded-lg px-3 text-sm bg-white
                          focus:outline-none focus:border-[#044e77]"
             >
-              <option value="masterclass">Make-Up Masterclass</option>
-              <option value="mother_daughter">Mother Daughter Make-Up Class</option>
+              <option value="masterclass">{CLASS_TYPE_LABELS.masterclass}</option>
+              <option value="advanced_class">{CLASS_TYPE_LABELS.advanced_class}</option>
+              <option value="mother_daughter">{CLASS_TYPE_LABELS.mother_daughter}</option>
             </select>
           </div>
           <div>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { parseAESTDate } from "@/lib/utils";
+import { CLASS_TYPE_CONFIG, CLASS_TYPE_LABELS } from "@/lib/class-types";
+import type { ClassType } from "@/types";
 
 function supabase() {
   return createClient(
@@ -91,7 +93,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "class_type and start_datetime are required" }, { status: 400 });
   }
 
-  const validTypes = ["masterclass", "mother_daughter"];
+  const validTypes = Object.keys(CLASS_TYPE_CONFIG);
   if (!validTypes.includes(class_type)) {
     return NextResponse.json({ error: "Invalid class_type" }, { status: 400 });
   }
@@ -101,18 +103,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Capacity must be a whole number of at least 1" }, { status: 400 });
   }
 
-  const CLASS_TITLES: Record<string, string> = {
-    masterclass:     "Make-Up Masterclass",
-    mother_daughter: "Mother Daughter Make-Up Class",
-  };
-
   const { data, error } = await supabase()
     .from("class_sessions")
     .insert({
       class_type,
-      title:            CLASS_TITLES[class_type],
+      title:            CLASS_TYPE_LABELS[class_type as ClassType],
       start_datetime:   new Date(start_datetime).toISOString(),
-      duration_minutes: 180,
+      duration_minutes: CLASS_TYPE_CONFIG[class_type as ClassType].durationMinutes,
       capacity:         resolvedCapacity,
       description:      description || null,
     })

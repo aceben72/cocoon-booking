@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { ClassSessionWithAvailability, ClientDetailsForm } from "@/types";
+import type { ClassSessionWithAvailability, ClientDetailsForm, ClassType } from "@/types";
 import type { ClassBookingResult } from "./ClassBookingWizard";
+import { CLASS_TYPE_CONFIG } from "@/lib/class-types";
 
 interface Props {
   session: ClassSessionWithAvailability & { title: string };
@@ -31,7 +32,6 @@ interface SquareCard {
   destroy: () => Promise<void>;
 }
 
-const SQUARE_PRICE_CENTS  = 8900; // $89 per ticket
 const SQUARE_APP_ID       = process.env.NEXT_PUBLIC_SQUARE_APP_ID ?? "";
 const SQUARE_LOCATION_ID  = process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID ?? "";
 const SQUARE_ENV          = process.env.NEXT_PUBLIC_SQUARE_ENVIRONMENT ?? "sandbox";
@@ -63,7 +63,9 @@ export default function ClassStepPayment({ session, client, quantity, onSuccess,
   const cardRef     = useRef<SquareCard | null>(null);
   const paymentsRef = useRef<SquarePayments | null>(null);
 
-  const totalCents = SQUARE_PRICE_CENTS * quantity;
+  const classConfig = CLASS_TYPE_CONFIG[session.class_type as ClassType];
+  const pricePerTicketCents = classConfig.priceCents;
+  const totalCents = pricePerTicketCents * quantity;
 
   const { date: displayDate, time: displayTime } = formatDateTime(session.start_datetime);
 
@@ -172,11 +174,11 @@ export default function ClassStepPayment({ session, client, quantity, onSuccess,
         <div className="space-y-3">
           {[
             { label: "Class",    value: session.title },
-            { label: "Duration", value: "3 hours" },
+            { label: "Duration", value: classConfig.durationLabel },
             { label: "Date",     value: displayDate },
             { label: "Time",     value: displayTime },
             { label: "Name",     value: `${client.first_name} ${client.last_name}` },
-            { label: "Tickets",  value: `${quantity} × $89` },
+            { label: "Tickets",  value: `${quantity} × $${pricePerTicketCents / 100}` },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-start justify-between gap-4 text-sm">
               <span className="text-[#9a8f87] font-light shrink-0">{label}</span>

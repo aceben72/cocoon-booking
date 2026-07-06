@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { normaliseMobile } from "@/lib/utils";
 import { sendClassBookingConfirmation, sendAdminClassNotification } from "@/lib/notifications";
-import type { ClientDetailsForm } from "@/types";
-
-const CLASS_PRICE_PER_TICKET_CENTS = 8900; // $89 per person — fixed for all class types
+import { CLASS_TYPE_CONFIG } from "@/lib/class-types";
+import type { ClientDetailsForm, ClassType } from "@/types";
 
 interface ClassBookingRequest {
   sessionId: string;
@@ -57,6 +56,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Class session not found" }, { status: 404 });
   }
 
+  const classConfig = CLASS_TYPE_CONFIG[session.class_type as ClassType];
+  if (!classConfig) {
+    return NextResponse.json({ error: "Unknown class type" }, { status: 500 });
+  }
+  const pricePerTicketCents = classConfig.priceCents;
+
   // ── Concurrency / spot check (before payment) ─────────────────────────────
   if ((session.spots_remaining as number) < quantity) {
     const remaining = session.spots_remaining as number;
@@ -66,7 +71,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 409 });
   }
 
-  const totalAmountCents = CLASS_PRICE_PER_TICKET_CENTS * quantity;
+  const totalAmountCents = pricePerTicketCents * quantity;
 
   // ── Square payment ────────────────────────────────────────────────────────
   let squarePaymentId: string | null = null;
@@ -161,7 +166,7 @@ export async function POST(request: NextRequest) {
     client_id:         clientId,
     status:            "confirmed",
     square_payment_id: squarePaymentId,
-    amount_cents:      CLASS_PRICE_PER_TICKET_CENTS,
+    amount_cents:      pricePerTicketCents,
   }));
 
   const { data: bookings, error: bookingError } = await supabase

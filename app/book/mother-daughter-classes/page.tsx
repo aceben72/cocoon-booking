@@ -2,9 +2,12 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import BookingProgress from "@/components/BookingProgress";
 import type { ClassSessionWithAvailability } from "@/types";
+import { CLASS_TYPE_CONFIG } from "@/lib/class-types";
 import AllCategoriesLink from "../AllCategoriesLink";
 
 export const dynamic = "force-dynamic";
+
+const { durationLabel, priceCents } = CLASS_TYPE_CONFIG.mother_daughter;
 
 async function getSessions(): Promise<ClassSessionWithAvailability[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -112,8 +115,8 @@ export default async function MotherDaughterClassesPage() {
 
                   {/* Meta row */}
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-[#9a8f87] font-light">
-                    <span>3 hours</span>
-                    <span>$89 per person</span>
+                    <span>{durationLabel}</span>
+                    <span>${priceCents / 100} per person</span>
                     <span
                       className={[
                         "font-medium",

@@ -96,7 +96,7 @@ export interface CategoryMeta {
 
 // ─── Class Sessions & Bookings ─────────────────────────────────────────────
 
-export type ClassType = "masterclass" | "mother_daughter";
+export type ClassType = "masterclass" | "advanced_class" | "mother_daughter";
 
 export interface ClassSession {
   id: string;

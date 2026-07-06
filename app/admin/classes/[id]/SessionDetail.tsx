@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { CLASS_TYPE_CONFIG, CLASS_TYPE_LABELS } from "@/lib/class-types";
+import type { ClassType } from "@/types";
 
 interface Booking {
   id: string;
@@ -44,11 +46,6 @@ interface MoveTarget {
   clientMobile: string;
   quantity: number;
 }
-
-const CLASS_TYPE_LABELS: Record<string, string> = {
-  masterclass:     "Make-Up Masterclass",
-  mother_daughter: "Mother Daughter Make-Up Class",
-};
 
 // 30-minute time options, 7:00 am – 7:00 pm (matches ClassesManager)
 const TIME_OPTIONS: { value: string; label: string }[] = (() => {
@@ -163,7 +160,8 @@ export default function SessionDetail({
 
   const confirmedBookings = bookings.filter((b) => b.status === "confirmed");
   const booked    = session.capacity - session.spots_remaining;
-  const typeLabel = CLASS_TYPE_LABELS[session.class_type] ?? session.title;
+  const typeLabel = CLASS_TYPE_LABELS[session.class_type as ClassType] ?? session.title;
+  const durationLabel = CLASS_TYPE_CONFIG[session.class_type as ClassType]?.durationLabel ?? "—";
 
   function openEdit() {
     setEditDate(toAESTDate(session.start_datetime));
@@ -343,7 +341,7 @@ export default function SessionDetail({
                 {formatAEST(session.start_datetime)}
               </h1>
               <p className="text-sm text-[#7a6f68] font-light">
-                3 hours · {booked} / {session.capacity} spots booked
+                {durationLabel} · {booked} / {session.capacity} spots booked
                 {!session.active && (
                   <span className="ml-2 inline-block px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 text-xs font-medium">
                     Cancelled

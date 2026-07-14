@@ -26,7 +26,7 @@ interface RawAppointment {
   payment_link_token: string | null;
   notes: string | null;
   created_at: string;
-  services: { name: string; category: string; duration_minutes: number } | null;
+  services: { name: string; category: string; duration_minutes: number; padding_minutes: number } | null;
   clients: {
     first_name: string;
     last_name: string;
@@ -74,7 +74,7 @@ async function getAppointments(status: string, from: string, to: string): Promis
     .select(`
       id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents,
       square_payment_id, payment_link_token, notes, created_at,
-      services ( name, category, duration_minutes ),
+      services ( name, category, duration_minutes, padding_minutes ),
       clients ( first_name, last_name, email, mobile, is_new_client ),
       intake_forms ( id, status, token ),
       facial_package_redemptions ( id )

@@ -11,7 +11,7 @@ interface CalendarAppointment {
   end_datetime: string;
   status: string;
   notes: string | null;
-  services: { name: string; duration_minutes: number } | null;
+  services: { name: string; category: string; duration_minutes: number; padding_minutes: number } | null;
   clients: { first_name: string; last_name: string; is_new_client?: boolean } | null;
 }
 
@@ -41,6 +41,9 @@ interface CalendarClassSession {
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────
+
+// Mirrors the extra buffer added at booking creation for new clients (app/api/bookings/route.ts)
+const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
 
 const HOUR_HEIGHT = 60; // px per hour
 const DAY_START   = 7;  // 7 am
@@ -379,8 +382,14 @@ export default function MobileCalendar() {
       setApptEditConflictChecking(true);
       try {
         const startISO = aestToISO(apptEditDate, apptEditTime);
-        const durationMs = (selectedAppt.services?.duration_minutes ?? 60) * 60_000;
-        const endISO = new Date(new Date(startISO).getTime() + durationMs).toISOString();
+        const durationMinutes = selectedAppt.services?.duration_minutes ?? 60;
+        const paddingMinutes = selectedAppt.services?.padding_minutes ?? 30;
+        const skipNewClientPadding = selectedAppt.services?.category === "mother-daughter";
+        const totalMins =
+          durationMinutes +
+          paddingMinutes +
+          (!skipNewClientPadding && selectedAppt.clients?.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
+        const endISO = new Date(new Date(startISO).getTime() + totalMins * 60_000).toISOString();
         const res = await fetch(
           `/api/admin/conflict-check?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}&excludeId=${selectedAppt.id}`,
         );

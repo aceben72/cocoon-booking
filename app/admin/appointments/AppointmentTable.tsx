@@ -60,7 +60,7 @@ interface Appointment {
   payment_link_token: string | null;
   notes: string | null;
   created_at: string;
-  services: { name: string; category: string; duration_minutes: number } | null;
+  services: { name: string; category: string; duration_minutes: number; padding_minutes: number } | null;
   clients: {
     first_name: string;
     last_name: string;
@@ -71,6 +71,9 @@ interface Appointment {
   intake_forms: { id: string; status: string; token: string }[];
   facial_package_redemptions: { id: string }[];
 }
+
+// Mirrors the extra buffer added at booking creation for new clients (app/api/bookings/route.ts)
+const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
 
 const STATUS_COLOURS: Record<string, string> = {
   confirmed:       "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -595,8 +598,14 @@ function EditApptForm({
       setConflictChecking(true);
       try {
         const startISO = new Date(`${date}T${time}:00+10:00`).toISOString();
-        const durationMs = (appt.services?.duration_minutes ?? 60) * 60_000;
-        const endISO = new Date(new Date(startISO).getTime() + durationMs).toISOString();
+        const durationMinutes = appt.services?.duration_minutes ?? 60;
+        const paddingMinutes = appt.services?.padding_minutes ?? 30;
+        const skipNewClientPadding = appt.services?.category === "mother-daughter";
+        const totalMins =
+          durationMinutes +
+          paddingMinutes +
+          (!skipNewClientPadding && appt.clients?.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
+        const endISO = new Date(new Date(startISO).getTime() + totalMins * 60_000).toISOString();
         const res = await fetch(
           `/api/admin/conflict-check?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}&excludeId=${appt.id}`,
         );
@@ -612,7 +621,7 @@ function EditApptForm({
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [date, time, appt.id, appt.services?.duration_minutes]);
+  }, [date, time, appt.id, appt.services?.duration_minutes, appt.services?.padding_minutes, appt.services?.category, appt.clients?.is_new_client]);
 
   async function handleSave() {
     setSaving(true);

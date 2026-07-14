@@ -23,13 +23,13 @@ export async function PUT(
 
   const db = supabase();
 
-  // Fetch appointment to get service duration + client details for notification
+  // Fetch appointment to get service duration/padding + client details for notification
   const { data: existing, error: fetchErr } = await db
     .from("appointments")
     .select(`
       id, start_datetime,
-      services ( name, duration_minutes ),
-      clients ( first_name, last_name, email, mobile )
+      services ( name, duration_minutes, padding_minutes, category ),
+      clients ( first_name, last_name, email, mobile, is_new_client )
     `)
     .eq("id", id)
     .single();
@@ -38,11 +38,23 @@ export async function PUT(
     return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
   }
 
-  const svc = existing.services as unknown as { name: string; duration_minutes: number } | null;
+  const svc = existing.services as unknown as { name: string; duration_minutes: number; padding_minutes: number; category: string } | null;
+  const rescheduleClient = existing.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean } | null;
   const durationMinutes = svc?.duration_minutes ?? 60;
+  const paddingMinutes = svc?.padding_minutes ?? 30;
+
+  // Mirrors the total-slot-length formula used when the appointment was first
+  // created (app/api/bookings/route.ts) so a reschedule doesn't shrink the
+  // blocked window back down to bare duration_minutes.
+  const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
+  const skipNewClientPadding = svc?.category === "mother-daughter";
+  const totalMins =
+    durationMinutes +
+    paddingMinutes +
+    (!skipNewClientPadding && rescheduleClient?.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
 
   const startISO = new Date(`${date}T${time}:00+10:00`).toISOString();
-  const endISO   = new Date(new Date(startISO).getTime() + durationMinutes * 60_000).toISOString();
+  const endISO   = new Date(new Date(startISO).getTime() + totalMins * 60_000).toISOString();
 
   const updateData: Record<string, unknown> = { start_datetime: startISO, end_datetime: endISO };
   if (notes !== undefined) updateData.notes = notes || null;
@@ -55,7 +67,7 @@ export async function PUT(
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
   // Send rescheduled notification (fire-and-forget)
-  const client = existing.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string } | null;
+  const client = rescheduleClient;
   if (client?.email && client?.mobile) {
     sendRescheduleNotification({
       serviceName: svc?.name ?? "your appointment",

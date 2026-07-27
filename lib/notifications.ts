@@ -1179,8 +1179,9 @@ export async function upsertMailchimpContact(params: {
   const server = apiKey.split("-").pop() ?? "us3";
   const tags = MAILCHIMP_TAG_MAP[params.serviceCategory];
   if (!tags) {
-    console.warn(`[mailchimp] no tag mapping for serviceCategory "${params.serviceCategory}" — skipping ${params.email}`);
-    return;
+    const msg = `no tag mapping for serviceCategory "${params.serviceCategory}"`;
+    console.warn(`[mailchimp] ${msg} — skipping ${params.email}`);
+    throw new Error(`[mailchimp] ${msg}`);
   }
 
   const journeyTag = params.isNewClient ? tags.new : tags.returning;
@@ -1210,8 +1211,9 @@ export async function upsertMailchimpContact(params: {
 
   if (!memberRes.ok) {
     const err = await memberRes.json().catch(() => null);
-    console.error(`[mailchimp] member upsert failed for ${params.email}:`, JSON.stringify(err));
-    return;
+    const msg = `member upsert failed for ${params.email}: ${JSON.stringify(err)}`;
+    console.error(`[mailchimp] ${msg}`);
+    throw new Error(`[mailchimp] ${msg}`);
   }
 
   const tagRes = await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
@@ -1222,8 +1224,10 @@ export async function upsertMailchimpContact(params: {
 
   if (!tagRes.ok) {
     const err = await tagRes.json().catch(() => null);
-    console.error(`[mailchimp] tag(s) [${tagsToApply.join(", ")}] failed for ${params.email}:`, JSON.stringify(err));
-  } else {
-    console.log(`[mailchimp] applied tag(s) [${tagsToApply.join(", ")}] to ${params.email}`);
+    const msg = `tag(s) [${tagsToApply.join(", ")}] failed for ${params.email}: ${JSON.stringify(err)}`;
+    console.error(`[mailchimp] ${msg}`);
+    throw new Error(`[mailchimp] ${msg}`);
   }
+
+  console.log(`[mailchimp] applied tag(s) [${tagsToApply.join(", ")}] to ${params.email}`);
 }

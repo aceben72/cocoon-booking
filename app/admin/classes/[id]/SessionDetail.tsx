@@ -10,6 +10,7 @@ interface Booking {
   status: string;
   amount_cents: number;
   square_payment_id: string | null;
+  mailchimp_tagged_at: string | null;
   created_at: string;
   clients: {
     first_name: string;
@@ -139,7 +140,6 @@ export default function SessionDetail({
   const [cancelling, setCancelling]     = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [completing, setCompleting]     = useState(false);
-  const [completed, setCompleted]       = useState(false);
 
   // Edit state
   const [editing, setEditing]         = useState(false);
@@ -159,6 +159,7 @@ export default function SessionDetail({
   const [moveError, setMoveError]             = useState("");
 
   const confirmedBookings = bookings.filter((b) => b.status === "confirmed");
+  const allTagged = confirmedBookings.length > 0 && confirmedBookings.every((b) => b.mailchimp_tagged_at);
   const booked    = session.capacity - session.spots_remaining;
   const typeLabel = CLASS_TYPE_LABELS[session.class_type as ClassType] ?? session.title;
   const durationLabel = CLASS_TYPE_CONFIG[session.class_type as ClassType]?.durationLabel ?? "—";
@@ -205,15 +206,26 @@ export default function SessionDetail({
   async function markComplete() {
     if (!confirm(`Mark this session complete? Mailchimp tags will be applied to ${confirmedBookings.length} client(s).`)) return;
     setCompleting(true);
+
     const res = await fetch(`/api/admin/classes/${session.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "complete" }),
     });
-    if (res.ok) {
-      setCompleted(true);
-    } else {
-      alert("Failed to mark session complete");
+    const data = await res.json().catch(() => ({}));
+
+    // Re-fetch bookings so the button reflects what was actually persisted —
+    // some clients may have been tagged successfully even if others failed.
+    try {
+      const refreshRes = await fetch(`/api/admin/classes/${session.id}`);
+      const refreshed = await refreshRes.json();
+      if (refreshRes.ok && refreshed.bookings) setBookings(refreshed.bookings);
+    } catch {
+      // If the refetch itself fails, fall through to the error alert below.
+    }
+
+    if (!res.ok) {
+      alert(data.error ?? "Failed to mark session complete");
     }
     setCompleting(false);
   }
@@ -367,11 +379,11 @@ export default function SessionDetail({
                 {confirmedBookings.length > 0 && !editing && (
                   <button
                     onClick={markComplete}
-                    disabled={completing || completed}
+                    disabled={completing || allTagged}
                     className="text-sm px-4 py-2 rounded-lg border border-emerald-200 text-emerald-700
                                hover:bg-emerald-50 transition-colors disabled:opacity-50"
                   >
-                    {completed ? "✓ Complete" : completing ? "Completing…" : "Mark Complete"}
+                    {allTagged ? "✓ Complete" : completing ? "Completing…" : "Mark Complete"}
                   </button>
                 )}
                 {confirmedBookings.length > 0 && !editing && (

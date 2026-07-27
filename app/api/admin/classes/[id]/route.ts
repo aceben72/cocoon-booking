@@ -24,7 +24,7 @@ export async function GET(
       .single(),
     supabase()
       .from("class_bookings")
-      .select("id, status, amount_cents, square_payment_id, created_at, clients(first_name, last_name, email, mobile)")
+      .select("id, status, amount_cents, square_payment_id, mailchimp_tagged_at, created_at, clients(first_name, last_name, email, mobile)")
       .eq("session_id", id)
       .order("created_at", { ascending: true }),
   ]);
@@ -114,34 +114,78 @@ export async function PATCH(
 
   // ── Complete session (action: "complete") ────────────────────────────────
   if (body.action === "complete") {
-    const { data: session } = await supabase()
+    const { data: session, error: sessionError } = await supabase()
       .from("class_sessions")
       .select("class_type")
       .eq("id", id)
       .single();
 
-    const { data: bookings } = await supabase()
+    if (sessionError || !session) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const { data: bookings, error: bookingsError } = await supabase()
       .from("class_bookings")
-      .select("id, clients(first_name, last_name, email, mobile, is_new_client)")
+      .select("id, mailchimp_tagged_at, clients(first_name, last_name, email, mobile, is_new_client)")
       .eq("session_id", id)
       .eq("status", "confirmed");
 
-    for (const booking of bookings ?? []) {
-      const client = booking.clients as unknown as {
-        first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean;
-      } | null;
-      if (client?.email && session?.class_type) {
-        upsertMailchimpContact({
+    if (bookingsError) {
+      return NextResponse.json({ error: bookingsError.message }, { status: 500 });
+    }
+
+    // Skip bookings already tagged so a retry after a partial failure doesn't re-tag everyone.
+    const toTag = (bookings ?? []).filter((b) => !b.mailchimp_tagged_at);
+
+    const results = await Promise.allSettled(
+      toTag.map(async (booking) => {
+        const client = booking.clients as unknown as {
+          first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean;
+        } | null;
+
+        if (!client?.email) {
+          throw new Error(`Booking ${booking.id} has no client email on file`);
+        }
+
+        await upsertMailchimpContact({
           email:           client.email,
           firstName:       client.first_name,
           lastName:        client.last_name,
           serviceCategory: session.class_type,
           isNewClient:     client.is_new_client,
-        }).catch(console.error);
-      }
+        });
+
+        const { error: updateError } = await supabase()
+          .from("class_bookings")
+          .update({ mailchimp_tagged_at: new Date().toISOString() })
+          .eq("id", booking.id);
+
+        if (updateError) throw updateError;
+      }),
+    );
+
+    const failures = results
+      .map((r, i) => (r.status === "rejected" ? { bookingId: toTag[i].id, error: String(r.reason) } : null))
+      .filter((f): f is { bookingId: string; error: string } => f !== null);
+
+    const taggedCount = results.length - failures.length;
+    const alreadyTaggedCount = (bookings ?? []).length - toTag.length;
+
+    if (failures.length > 0) {
+      console.error("[classes complete] Mailchimp tagging failures:", failures);
+      return NextResponse.json(
+        {
+          ok:          false,
+          error:       `Tagged ${taggedCount} of ${toTag.length} client(s) — ${failures.length} failed. Click Mark Complete again to retry the rest.`,
+          taggedCount,
+          alreadyTaggedCount,
+          failedCount: failures.length,
+        },
+        { status: 502 },
+      );
     }
 
-    return NextResponse.json({ ok: true, taggedCount: (bookings ?? []).length });
+    return NextResponse.json({ ok: true, taggedCount, alreadyTaggedCount });
   }
 
   // ── Cancel session (default / action: "cancel") ───────────────────────────

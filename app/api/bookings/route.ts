@@ -164,28 +164,32 @@ export async function POST(request: NextRequest) {
     giftCardAppliedCents = Math.min(gcResult.giftCard.remaining_value_cents, afterCoupon);
   }
 
-  const totalDiscountCents = couponDiscountCents + giftCardAppliedCents;
+  // Only the coupon is a genuine discount (reduces the price). A gift card is
+  // a payment method, not a discount — its value must be reflected in
+  // amount_paid_cents below, not netted out of the price.
+  const totalDiscountCents = couponDiscountCents;
 
-  // Determine final amount to charge.
+  // Determine the amount still owed that needs to be charged via Square,
+  // after the coupon discount and any gift card value have been applied.
   // The deposit amount is authoritative server-side — we only accept the
   // client-signalled deposit if the configured DEPOSIT_CENTS matches.
   // Any other client-supplied value is ignored and full payment is charged.
   const depositAllowed = !["brow-treatments", "led-light-treatments", "mother-daughter"].includes(service.category);
   const DEPOSIT_CENTS = service.deposit_cents ?? 5000; // $50 default, matches StepPayment
-  let amountPaidCents: number;
+  let amountToChargeCents: number;
 
   if (facialPackagePaidInFull) {
-    amountPaidCents = 0;
+    amountToChargeCents = 0;
   } else if (
     depositAllowed &&
     typeof rawAmountPaid === "number" &&
     rawAmountPaid === DEPOSIT_CENTS
   ) {
     // Client chose deposit — amount must match configured deposit exactly
-    amountPaidCents = Math.max(0, DEPOSIT_CENTS - totalDiscountCents);
+    amountToChargeCents = Math.max(0, DEPOSIT_CENTS - couponDiscountCents - giftCardAppliedCents);
   } else {
     // Full payment (or rawAmountPaid didn't match configured deposit — default to full)
-    amountPaidCents = Math.max(0, service.price_cents - totalDiscountCents);
+    amountToChargeCents = Math.max(0, service.price_cents - couponDiscountCents - giftCardAppliedCents);
   }
 
   // ── Square payment ────────────────────────────────────────────────────
@@ -196,7 +200,7 @@ export async function POST(request: NextRequest) {
   const squareEnv = process.env.SQUARE_ENVIRONMENT ?? "sandbox";
 
   // Only charge Square if there's a meaningful amount (>= 50 cents)
-  if (amountPaidCents >= 50 && squarePaymentToken !== "NO_CHARGE") {
+  if (amountToChargeCents >= 50 && squarePaymentToken !== "NO_CHARGE") {
     if (squareToken && squareLocationId) {
       try {
         const { SquareClient, SquareEnvironment } = await import("square");
@@ -211,7 +215,7 @@ export async function POST(request: NextRequest) {
           sourceId: squarePaymentToken,
           idempotencyKey,
           amountMoney: {
-            amount: BigInt(amountPaidCents),
+            amount: BigInt(amountToChargeCents),
             currency: "AUD",
           },
           locationId: squareLocationId,
@@ -226,6 +230,10 @@ export async function POST(request: NextRequest) {
       }
     }
   }
+
+  // Total amount actually paid = gift card value applied + whatever was
+  // charged via Square (the deposit/full-payment remainder above).
+  const amountPaidCents = giftCardAppliedCents + amountToChargeCents;
 
   // ── Upsert client ─────────────────────────────────────────────────────
   // Use ILIKE for case-insensitive email matching so that e.g. Jane@gmail.com

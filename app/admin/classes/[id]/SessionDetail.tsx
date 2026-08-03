@@ -9,6 +9,7 @@ interface Booking {
   id: string;
   status: string;
   amount_cents: number;
+  discount_cents: number;
   square_payment_id: string | null;
   mailchimp_tagged_at: string | null;
   created_at: string;
@@ -18,6 +19,11 @@ interface Booking {
     email: string;
     mobile: string;
   } | null;
+  coupons: { code: string } | null;
+}
+
+function formatMoney(cents: number) {
+  return `$${(cents / 100).toFixed(0)}`;
 }
 
 interface Session {
@@ -540,6 +546,11 @@ export default function SessionDetail({
                         <td className="px-4 py-3">
                           <div className="font-medium text-[#1a1a1a]">{clientName}</div>
                           <div className="text-xs text-[#7a6f68]">{client?.email}</div>
+                          {booking.discount_cents > 0 && (
+                            <div className="text-[10px] text-emerald-700 mt-0.5">
+                              −{formatMoney(booking.discount_cents)} discount{booking.coupons?.code ? ` (${booking.coupons.code})` : ""}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-[#1a1a1a]">{client?.mobile ?? "—"}</td>
                         <td className="px-4 py-3 text-[#7a6f68] whitespace-nowrap">{formatShort(booking.created_at)}</td>

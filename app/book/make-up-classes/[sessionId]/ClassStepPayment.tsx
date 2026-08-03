@@ -67,10 +67,27 @@ export default function ClassStepPayment({ session, client, quantity, onSuccess,
   const pricePerTicketCents = classConfig.priceCents;
   const totalCents = pricePerTicketCents * quantity;
 
+  // ── Discount code state — only usable for single-ticket bookings, since
+  // multi-ticket bookings create one class_bookings row per ticket and there's
+  // no single row to attribute a whole-order discount to. ────────────────────
+  const couponEligible = quantity === 1;
+  const [couponCode, setCouponCode] = useState("");
+  const [couponValidating, setCouponValidating] = useState(false);
+  const [couponError, setCouponError] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountCents: number;
+    label: string;
+  } | null>(null);
+
+  const discountCents = couponEligible ? (appliedCoupon?.discountCents ?? 0) : 0;
+  const amountPaidCents = Math.max(0, totalCents - discountCents);
+  const needsCardPayment = amountPaidCents >= 50;
+
   const { date: displayDate, time: displayTime } = formatDateTime(session.start_datetime);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!needsCardPayment || typeof window === "undefined") return;
     let aborted = false;
 
     const loadAndInit = async () => {
@@ -110,20 +127,60 @@ export default function ClassStepPayment({ session, client, quantity, onSuccess,
       aborted = true;
       cardRef.current?.destroy().catch(() => {});
       cardRef.current = null;
+      setCardReady(false);
+      setSdkReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [needsCardPayment]);
+
+  // ── Coupon validation ─────────────────────────────────────────
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) return;
+    setCouponValidating(true);
+    setCouponError("");
+    try {
+      const res = await fetch("/api/validate-class-coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponCode, amountCents: totalCents }),
+      });
+      const data = await res.json();
+      if (data.valid && data.coupon) {
+        const label = data.coupon.type === "percentage"
+          ? `${data.coupon.value}% off`
+          : `$${(data.discountCents / 100).toFixed(0)} off`;
+        setAppliedCoupon({
+          code: data.coupon.code,
+          discountCents: data.discountCents,
+          label,
+        });
+        setCouponCode("");
+      } else {
+        setCouponError(data.error ?? "Invalid discount code.");
+      }
+    } catch {
+      setCouponError("Could not validate discount code. Please try again.");
+    } finally {
+      setCouponValidating(false);
+    }
+  };
 
   const handleSubmit = async () => {
-    if (!cardRef.current || submitting) return;
+    if (needsCardPayment && (!cardRef.current || submitting)) return;
+    if (!needsCardPayment && submitting) return;
     setSubmitting(true);
 
     try {
-      const result = await cardRef.current.tokenize();
-      if (result.status !== "OK" || !result.token) {
-        onError(result.errors?.[0]?.message ?? "Card tokenisation failed.");
-        setSubmitting(false);
-        return;
+      let squarePaymentToken = "NO_CHARGE";
+
+      if (needsCardPayment) {
+        const result = await cardRef.current!.tokenize();
+        if (result.status !== "OK" || !result.token) {
+          onError(result.errors?.[0]?.message ?? "Card tokenisation failed.");
+          setSubmitting(false);
+          return;
+        }
+        squarePaymentToken = result.token;
       }
 
       const response = await fetch("/api/class-bookings", {
@@ -132,8 +189,9 @@ export default function ClassStepPayment({ session, client, quantity, onSuccess,
         body: JSON.stringify({
           sessionId: session.id,
           client,
-          squarePaymentToken: result.token,
+          squarePaymentToken,
           quantity,
+          couponCode: couponEligible ? (appliedCoupon?.code ?? null) : null,
         }),
       });
 
@@ -185,51 +243,131 @@ export default function ClassStepPayment({ session, client, quantity, onSuccess,
               <span className="text-[#1a1a1a] text-right font-light">{value}</span>
             </div>
           ))}
-          <div className="pt-3 border-t border-[#f0ebe4] flex items-center justify-between">
-            <span className="text-sm font-medium text-[#3a3330]">Total due today</span>
-            <span className="text-xl font-[family-name:var(--font-cormorant)] font-medium text-[#044e77]">
-              ${totalCents / 100}
-            </span>
+          <div className="pt-3 border-t border-[#f0ebe4] space-y-1.5">
+            {discountCents > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[#9a8f87] font-light">Ticket total</span>
+                <span className="text-[#1a1a1a] font-light">${totalCents / 100}</span>
+              </div>
+            )}
+            {appliedCoupon && discountCents > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-emerald-700 font-light">
+                  Discount ({appliedCoupon.label})
+                </span>
+                <span className="text-emerald-700 font-light">−${discountCents / 100}</span>
+              </div>
+            )}
+            {amountPaidCents === 0 ? (
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-[#3a3330]">Due today</span>
+                <span className="text-xl font-[family-name:var(--font-cormorant)] font-medium text-emerald-700">
+                  Free ✓
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-[#3a3330]">Total due today</span>
+                <span className="text-xl font-[family-name:var(--font-cormorant)] font-medium text-[#044e77]">
+                  ${amountPaidCents / 100}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Card form */}
+      {/* Discount code */}
       <div className="bg-white rounded-2xl border border-[#e8e0d8] p-6 mb-5">
-        <h3 className="text-xs uppercase tracking-wider text-[#b0a499] font-light mb-4">Card details</h3>
-
-        {!sdkReady && (
-          <div className="flex items-center gap-2 text-sm text-[#9a8f87] font-light py-4">
-            <div className="w-4 h-4 border-2 border-[#e8e0d8] border-t-[#044e77] rounded-full animate-spin" />
-            Loading secure payment form...
+        <h3 className="text-xs uppercase tracking-wider text-[#b0a499] font-light mb-1">Discount code</h3>
+        {!couponEligible ? (
+          <p className="text-xs text-[#9a8f87] font-light">
+            Discount codes apply to single-ticket bookings only.
+          </p>
+        ) : appliedCoupon ? (
+          <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5">
+            <span className="text-sm text-emerald-800 font-light">
+              {appliedCoupon.code}{" "}
+              <span className="text-emerald-600">({appliedCoupon.label})</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setAppliedCoupon(null)}
+              className="text-xs text-emerald-700 hover:text-red-600 ml-3 transition-colors"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(""); }}
+              onKeyDown={(e) => e.key === "Enter" && handleApplyCoupon()}
+              placeholder="SUMMER20"
+              className="flex-1 rounded-xl border border-[#e8e0d8] px-4 py-2.5 text-sm font-light focus:outline-none focus:border-[#044e77] uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal"
+            />
+            <button
+              type="button"
+              onClick={handleApplyCoupon}
+              disabled={!couponCode.trim() || couponValidating}
+              className="rounded-xl border border-[#044e77] text-[#044e77] px-4 py-2.5 text-sm font-light hover:bg-[#044e77] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {couponValidating ? "Checking…" : "Apply"}
+            </button>
           </div>
         )}
-
-        <div
-          id="class-card-container"
-          className={!cardReady ? "hidden" : ""}
-          style={{ minHeight: "89px" }}
-        />
-        <style>{`
-          #class-card-container .sq-card-postal-code,
-          #class-card-container .postal-code-wrapper,
-          #class-card-container [data-field-type="postalCode"] { display: none !important; }
-        `}</style>
-
-        <p className="text-xs text-[#b0a499] font-light mt-3 flex items-center gap-1.5">
-          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-          </svg>
-          Secured by Square · Your card details are never stored by Cocoon
-        </p>
+        {couponError && (
+          <p className="text-xs text-red-600 mt-1.5 font-light">{couponError}</p>
+        )}
       </div>
+
+      {/* Card form — hidden when the discount covers the full amount */}
+      {needsCardPayment && (
+        <div className="bg-white rounded-2xl border border-[#e8e0d8] p-6 mb-5">
+          <h3 className="text-xs uppercase tracking-wider text-[#b0a499] font-light mb-4">Card details</h3>
+
+          {!sdkReady && (
+            <div className="flex items-center gap-2 text-sm text-[#9a8f87] font-light py-4">
+              <div className="w-4 h-4 border-2 border-[#e8e0d8] border-t-[#044e77] rounded-full animate-spin" />
+              Loading secure payment form...
+            </div>
+          )}
+
+          <div
+            id="class-card-container"
+            className={!cardReady ? "hidden" : ""}
+            style={{ minHeight: "89px" }}
+          />
+          <style>{`
+            #class-card-container .sq-card-postal-code,
+            #class-card-container .postal-code-wrapper,
+            #class-card-container [data-field-type="postalCode"] { display: none !important; }
+          `}</style>
+
+          <p className="text-xs text-[#b0a499] font-light mt-3 flex items-center gap-1.5">
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            </svg>
+            Secured by Square · Your card details are never stored by Cocoon
+          </p>
+        </div>
+      )}
+
+      {/* Free booking notice */}
+      {!needsCardPayment && amountPaidCents === 0 && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-5 text-sm text-emerald-800 font-light">
+          Your discount covers the full amount — no payment required today.
+        </div>
+      )}
 
       <button
         onClick={handleSubmit}
-        disabled={!cardReady || submitting}
+        disabled={needsCardPayment ? (!cardReady || submitting) : submitting}
         className={[
           "w-full rounded-xl py-4 px-6 font-medium text-white transition-all",
-          cardReady && !submitting
+          (needsCardPayment ? cardReady : true) && !submitting
             ? "bg-[#044e77] hover:bg-[#033d5c] active:bg-[#022d44]"
             : "bg-[#b0c4d4] cursor-not-allowed",
         ].join(" ")}
@@ -237,10 +375,12 @@ export default function ClassStepPayment({ session, client, quantity, onSuccess,
         {submitting ? (
           <span className="flex items-center justify-center gap-2">
             <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-            Processing payment...
+            {needsCardPayment ? "Processing payment..." : "Confirming booking..."}
           </span>
+        ) : amountPaidCents === 0 ? (
+          "Confirm booking"
         ) : (
-          `Confirm & Pay $${totalCents / 100}`
+          `Confirm & Pay $${amountPaidCents / 100}`
         )}
       </button>
 

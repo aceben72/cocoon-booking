@@ -24,7 +24,7 @@ export async function GET(
       .single(),
     supabase()
       .from("class_bookings")
-      .select("id, status, amount_cents, square_payment_id, mailchimp_tagged_at, created_at, clients(first_name, last_name, email, mobile)")
+      .select("id, status, amount_cents, discount_cents, square_payment_id, mailchimp_tagged_at, created_at, clients(first_name, last_name, email, mobile), coupons(code)")
       .eq("session_id", id)
       .order("created_at", { ascending: true }),
   ]);

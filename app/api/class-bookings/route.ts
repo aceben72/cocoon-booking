@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { normaliseMobile } from "@/lib/utils";
 import { sendClassBookingConfirmation, sendAdminClassNotification } from "@/lib/notifications";
 import { CLASS_TYPE_CONFIG } from "@/lib/class-types";
+import { validateCouponForClass, calculateDiscount } from "@/lib/coupons";
 import type { ClientDetailsForm, ClassType } from "@/types";
 
 interface ClassBookingRequest {
@@ -9,6 +10,7 @@ interface ClassBookingRequest {
   client: ClientDetailsForm;
   squarePaymentToken: string;
   quantity?: number;
+  couponCode?: string | null;
 }
 
 export async function POST(request: NextRequest) {
@@ -19,7 +21,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { sessionId, client, squarePaymentToken } = body;
+  const { sessionId, client, squarePaymentToken, couponCode } = body;
   const quantity = body.quantity ?? 1;
 
   if (!sessionId || !client || !squarePaymentToken) {
@@ -28,6 +30,13 @@ export async function POST(request: NextRequest) {
 
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 4) {
     return NextResponse.json({ error: "Quantity must be between 1 and 4" }, { status: 400 });
+  }
+
+  if (couponCode && quantity !== 1) {
+    return NextResponse.json(
+      { error: "Discount codes can only be applied to single-ticket bookings." },
+      { status: 400 },
+    );
   }
 
   const mobile = normaliseMobile(client.mobile);
@@ -73,6 +82,21 @@ export async function POST(request: NextRequest) {
 
   const totalAmountCents = pricePerTicketCents * quantity;
 
+  // ── Server-side coupon validation ─────────────────────────────────────────
+  let couponId: string | null = null;
+  let couponDiscountCents = 0;
+
+  if (couponCode) {
+    const couponResult = await validateCouponForClass(couponCode, totalAmountCents);
+    if (!couponResult.valid || !couponResult.coupon) {
+      return NextResponse.json({ error: `Discount code: ${couponResult.error}` }, { status: 400 });
+    }
+    couponId = couponResult.coupon.id;
+    couponDiscountCents = calculateDiscount(couponResult.coupon, totalAmountCents);
+  }
+
+  const amountToChargeCents = Math.max(0, totalAmountCents - couponDiscountCents);
+
   // ── Square payment ────────────────────────────────────────────────────────
   let squarePaymentId: string | null = null;
 
@@ -80,30 +104,34 @@ export async function POST(request: NextRequest) {
   const squareLocation = process.env.SQUARE_LOCATION_ID;
   const squareEnv      = process.env.SQUARE_ENVIRONMENT ?? "sandbox";
 
-  if (squareToken && squareLocation) {
-    try {
-      const { SquareClient, SquareEnvironment } = await import("square");
-      const squareClient = new SquareClient({
-        token: squareToken,
-        environment: squareEnv === "production" ? SquareEnvironment.Production : SquareEnvironment.Sandbox,
-      });
+  // Only charge Square if there's a meaningful amount (>= 50 cents) — a
+  // coupon can cover the full ticket price, in which case no card is charged.
+  if (amountToChargeCents >= 50 && squarePaymentToken !== "NO_CHARGE") {
+    if (squareToken && squareLocation) {
+      try {
+        const { SquareClient, SquareEnvironment } = await import("square");
+        const squareClient = new SquareClient({
+          token: squareToken,
+          environment: squareEnv === "production" ? SquareEnvironment.Production : SquareEnvironment.Sandbox,
+        });
 
-      const idempotencyKey = crypto.randomUUID().replace(/-/g, "").substring(0, 45);
+        const idempotencyKey = crypto.randomUUID().replace(/-/g, "").substring(0, 45);
 
-      const ticketLabel = quantity === 1 ? "1 ticket" : `${quantity} tickets`;
-      const { payment } = await squareClient.payments.create({
-        sourceId: squarePaymentToken,
-        idempotencyKey,
-        amountMoney: { amount: BigInt(totalAmountCents), currency: "AUD" },
-        locationId: squareLocation,
-        buyerEmailAddress: client.email,
-        note: `${session.title} — ${ticketLabel} — ${new Date(session.start_datetime).toLocaleDateString("en-AU")}`,
-      });
+        const ticketLabel = quantity === 1 ? "1 ticket" : `${quantity} tickets`;
+        const { payment } = await squareClient.payments.create({
+          sourceId: squarePaymentToken,
+          idempotencyKey,
+          amountMoney: { amount: BigInt(amountToChargeCents), currency: "AUD" },
+          locationId: squareLocation,
+          buyerEmailAddress: client.email,
+          note: `${session.title} — ${ticketLabel} — ${new Date(session.start_datetime).toLocaleDateString("en-AU")}`,
+        });
 
-      squarePaymentId = payment?.id ?? null;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Payment failed";
-      return NextResponse.json({ error: `Payment failed: ${message}` }, { status: 402 });
+        squarePaymentId = payment?.id ?? null;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Payment failed";
+        return NextResponse.json({ error: `Payment failed: ${message}` }, { status: 402 });
+      }
     }
   }
 
@@ -161,12 +189,16 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Insert one booking record per ticket ──────────────────────────────────
+  // (couponId/couponDiscountCents are only ever set when quantity === 1, so
+  // there's never more than one row here when a coupon is involved.)
   const bookingRows = Array.from({ length: quantity }, () => ({
     session_id:        sessionId,
     client_id:         clientId,
     status:            "confirmed",
     square_payment_id: squarePaymentId,
     amount_cents:      pricePerTicketCents,
+    coupon_id:         couponId,
+    discount_cents:    couponDiscountCents,
   }));
 
   const { data: bookings, error: bookingError } = await supabase
@@ -180,6 +212,28 @@ export async function POST(request: NextRequest) {
       { error: `Failed to create booking: ${bookingError?.message ?? "unknown"}` },
       { status: 500 },
     );
+  }
+
+  // ── Record coupon use ─────────────────────────────────────────────────────
+  if (couponId && couponDiscountCents > 0) {
+    await supabase.from("coupon_uses").insert({
+      coupon_id:         couponId,
+      class_booking_id:  bookings[0].id,
+      discount_cents:    couponDiscountCents,
+    });
+
+    // Increment uses_count
+    const { data: couponRow } = await supabase
+      .from("coupons")
+      .select("uses_count")
+      .eq("id", couponId)
+      .single();
+    if (couponRow) {
+      await supabase
+        .from("coupons")
+        .update({ uses_count: (couponRow.uses_count ?? 0) + 1 })
+        .eq("id", couponId);
+    }
   }
 
   // ── Refresh spots remaining ───────────────────────────────────────────────
@@ -196,7 +250,7 @@ export async function POST(request: NextRequest) {
     className:       session.title as string,
     startISO:        session.start_datetime as string,
     durationMinutes: session.duration_minutes as number,
-    amountCents:     totalAmountCents,
+    amountCents:     amountToChargeCents,
     quantity,
     client:          { ...client, mobile },
   }).catch(console.error);
@@ -217,7 +271,8 @@ export async function POST(request: NextRequest) {
       duration_minutes: session.duration_minutes,
     },
     spotsRemaining,
-    amountCents: totalAmountCents,
+    amountCents: amountToChargeCents,
+    discountCents: couponDiscountCents,
     quantity,
     client: {
       first_name: client.first_name,

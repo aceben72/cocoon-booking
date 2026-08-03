@@ -16,6 +16,7 @@ export interface ClassBookingResult {
   session: { title: string; start_datetime: string; duration_minutes: number };
   spotsRemaining: number;
   amountCents: number;
+  discountCents?: number;
   quantity: number;
   client: { first_name: string; last_name: string; email: string };
 }

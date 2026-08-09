@@ -1503,18 +1503,32 @@ export function AppointmentTable({
                             </button>
                           )}
                           {appt.status === "pending_payment" && (
-                            <button
-                              disabled={updatingId === appt.id}
-                              onClick={() => {
-                                if (confirm("Cancel this appointment and release the time slot?")) {
-                                  updateStatus(appt.id, "cancelled", "pending_payment");
-                                }
-                              }}
-                              className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-600
-                                         hover:bg-red-50 transition-colors disabled:opacity-50"
-                            >
-                              Cancel
-                            </button>
+                            <>
+                              <button
+                                disabled={updatingId === appt.id}
+                                onClick={() => {
+                                  if (confirm("Deposit for this appointment was never paid — mark complete anyway?")) {
+                                    updateStatus(appt.id, "completed", "pending_payment");
+                                  }
+                                }}
+                                className="text-xs px-2.5 py-1 rounded border border-blue-200 text-blue-700
+                                           hover:bg-blue-50 transition-colors disabled:opacity-50"
+                              >
+                                Complete
+                              </button>
+                              <button
+                                disabled={updatingId === appt.id}
+                                onClick={() => {
+                                  if (confirm("Cancel this appointment and release the time slot?")) {
+                                    updateStatus(appt.id, "cancelled", "pending_payment");
+                                  }
+                                }}
+                                className="text-xs px-2.5 py-1 rounded border border-red-200 text-red-600
+                                           hover:bg-red-50 transition-colors disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </>
                           )}
                           {updatingId === appt.id && (
                             <span className="text-xs text-[#7a6f68]">Saving…</span>

@@ -1158,6 +1158,18 @@ export async function tagMailchimpFacialBooked(params: {
     }),
   });
 
+  // Force an off→on transition so a tag-triggered Mailchimp automation re-fires
+  // even for a contact who already carries this tag from a previous booking.
+  const removeRes = await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tags: [{ name: "facial-booked", status: "inactive" }] }),
+  });
+  if (!removeRes.ok) {
+    const err = await removeRes.json().catch(() => null);
+    console.error(`[mailchimp] facial-booked tag removal failed for ${params.email}: ${JSON.stringify(err)}`);
+  }
+
   await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
     method: "POST",
     headers,
@@ -1214,6 +1226,18 @@ export async function upsertMailchimpContact(params: {
     const msg = `member upsert failed for ${params.email}: ${JSON.stringify(err)}`;
     console.error(`[mailchimp] ${msg}`);
     throw new Error(`[mailchimp] ${msg}`);
+  }
+
+  // Force an off→on transition on every completion so a tag-triggered Mailchimp
+  // automation re-fires for returning clients, not just first-time taggings.
+  const removeRes = await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tags: tagsToApply.map((name) => ({ name, status: "inactive" })) }),
+  });
+  if (!removeRes.ok) {
+    const err = await removeRes.json().catch(() => null);
+    console.error(`[mailchimp] tag(s) [${tagsToApply.join(", ")}] removal failed for ${params.email}: ${JSON.stringify(err)}`);
   }
 
   const tagRes = await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {

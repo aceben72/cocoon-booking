@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SERVICES } from "@/lib/services-data";
 import { getAvailableSlots, DEFAULT_AVAILABILITY } from "@/lib/availability";
+import { effectiveAppointmentEnd, CLASS_PADDING_MINUTES } from "@/lib/booking-conflicts";
 
 /**
  * GET /api/availability?serviceId=xxx&date=YYYY-MM-DD
@@ -70,13 +71,18 @@ async function getSlotsForDate(
       // Fetch confirmed/pending appointments for this date
       const { data: appts } = await supabase
         .from("appointments")
-        .select("start_datetime, end_datetime")
+        .select("start_datetime, end_datetime, services(name)")
         .in("status", ["confirmed", "pending"])
         .gte("start_datetime", startUTC)
         .lt("start_datetime", endUTC);
 
       if (appts) {
-        existingBookings = appts.map((a: { start_datetime: string; end_datetime: string }) => ({
+        // Recompute each appointment's effective end from the service's
+        // CURRENT duration + padding (not just the stored end_datetime,
+        // which is frozen at booking time and can go stale if the service's
+        // duration/padding is changed afterwards) so the widget never offers
+        // a slot the server-side conflict check would reject.
+        existingBookings = (appts as unknown as { start_datetime: string; end_datetime: string; services: { name: string } | null }[]).map((a) => ({
           start: new Intl.DateTimeFormat("en-AU", {
             timeZone: "Australia/Brisbane",
             hour: "2-digit",
@@ -88,7 +94,7 @@ async function getSlotsForDate(
             hour: "2-digit",
             minute: "2-digit",
             hour12: false,
-          }).format(new Date(a.end_datetime)),
+          }).format(effectiveAppointmentEnd(a.start_datetime, a.end_datetime, a.services?.name)),
         }));
       }
 
@@ -129,7 +135,6 @@ async function getSlotsForDate(
         .lt("start_datetime", endUTC);
 
       if (classSessions) {
-        const CLASS_PADDING_MINUTES = 30;
         for (const cs of classSessions as { start_datetime: string; duration_minutes: number }[]) {
           const sessionStart = new Date(cs.start_datetime);
           const sessionEndMs = sessionStart.getTime() + (cs.duration_minutes + CLASS_PADDING_MINUTES) * 60 * 1000;

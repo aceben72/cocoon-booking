@@ -6,6 +6,7 @@ import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
 import { sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
+import { hasBookingConflict } from "@/lib/booking-conflicts";
 import type { ClientDetailsForm } from "@/types";
 
 interface BookingRequest {
@@ -105,14 +106,7 @@ export async function POST(request: NextRequest) {
   const serviceUUID = dbService.id as string;
 
   // ── Double-booking check ──────────────────────────────────────────────
-  const { data: conflicts } = await supabase
-    .from("appointments")
-    .select("id")
-    .in("status", ["confirmed", "pending", "pending_payment"])
-    .lt("start_datetime", endISO)
-    .gt("end_datetime", startISO);
-
-  if (conflicts && conflicts.length > 0) {
+  if (await hasBookingConflict(supabase, startISO, endISO)) {
     return NextResponse.json(
       { error: "This time slot is no longer available. Please choose another." },
       { status: 409 },

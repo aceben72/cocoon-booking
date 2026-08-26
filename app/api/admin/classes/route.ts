@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { parseAESTDate } from "@/lib/utils";
 import { CLASS_TYPE_CONFIG, CLASS_TYPE_LABELS } from "@/lib/class-types";
+import { hasBookingConflict, CLASS_PADDING_MINUTES } from "@/lib/booking-conflicts";
 import type { ClassType } from "@/types";
 
 function supabase() {
@@ -103,7 +104,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Capacity must be a whole number of at least 1" }, { status: 400 });
   }
 
-  const { data, error } = await supabase()
+  const db = supabase();
+
+  // ── Double-booking check ────────────────────────────────────────────────
+  // A new class session must not start inside the padding window of an
+  // existing appointment or another class session, and vice versa.
+  const sessionStartISO = new Date(start_datetime).toISOString();
+  const sessionDurationMins = CLASS_TYPE_CONFIG[class_type as ClassType].durationMinutes;
+  const sessionEndISO = new Date(
+    new Date(sessionStartISO).getTime() + (sessionDurationMins + CLASS_PADDING_MINUTES) * 60_000,
+  ).toISOString();
+
+  if (await hasBookingConflict(db, sessionStartISO, sessionEndISO)) {
+    return NextResponse.json(
+      { error: "That time slot already has an existing booking." },
+      { status: 409 },
+    );
+  }
+
+  const { data, error } = await db
     .from("class_sessions")
     .insert({
       class_type,

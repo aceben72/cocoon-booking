@@ -4,6 +4,7 @@ import { randomUUID, randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
 import { sendPaymentRequest, sendAppointmentConfirmation, sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
+import { hasBookingConflict } from "@/lib/booking-conflicts";
 
 function supabase() {
   return createClient(
@@ -64,14 +65,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Double-booking check (include pending_payment — slot is reserved)
-  const { data: conflicts } = await db
-    .from("appointments")
-    .select("id")
-    .in("status", ["confirmed", "pending", "pending_payment"])
-    .lt("start_datetime", endISO)
-    .gt("end_datetime", startISO);
-
-  if (conflicts && conflicts.length > 0) {
+  if (await hasBookingConflict(db, startISO, endISO)) {
     return NextResponse.json(
       { error: "That time slot already has an existing booking." },
       { status: 409 },

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { generateGiftCardCode } from "@/lib/gift-cards";
 
@@ -133,16 +133,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Send emails (fire & forget) ───────────────────────────────
-  sendGiftCardEmails({
-    code,
-    denomination_cents,
-    purchaser_name: purchaser_name.trim(),
-    purchaser_email: purchaser_email.trim(),
-    recipient_name: recipient_name.trim(),
-    recipient_email: recipient_email.trim(),
-    personal_message: message,
-  }).catch(console.error);
+  // ── Send emails (after response, guaranteed to complete) ───────
+  after(() =>
+    sendGiftCardEmails({
+      code,
+      denomination_cents,
+      purchaser_name: purchaser_name.trim(),
+      purchaser_email: purchaser_email.trim(),
+      recipient_name: recipient_name.trim(),
+      recipient_email: recipient_email.trim(),
+      personal_message: message,
+    }).catch(console.error),
+  );
 
   return NextResponse.json({
     success: true,

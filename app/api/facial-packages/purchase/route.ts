@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { generatePackageCode, PACKAGE_META } from "@/lib/facial-packages";
 
@@ -159,18 +159,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Send emails (fire & forget) ───────────────────────────────
-  sendPackageEmails({
-    code,
-    type,
-    meta,
-    expiresAt,
-    purchaser_name: purchaser_name.trim(),
-    purchaser_email: purchaser_email.trim(),
-    recipient_name: recipient_name.trim(),
-    recipient_email: recipient_email.trim(),
-    personal_message: message,
-  }).catch(console.error);
+  // ── Send emails (after response, guaranteed to complete) ───────
+  after(() =>
+    sendPackageEmails({
+      code,
+      type,
+      meta,
+      expiresAt,
+      purchaser_name: purchaser_name.trim(),
+      purchaser_email: purchaser_email.trim(),
+      recipient_name: recipient_name.trim(),
+      recipient_email: recipient_email.trim(),
+      personal_message: message,
+    }).catch(console.error),
+  );
 
   return NextResponse.json({
     success: true,

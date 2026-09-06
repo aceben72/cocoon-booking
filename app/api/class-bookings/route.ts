@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { normaliseMobile } from "@/lib/utils";
 import { sendClassBookingConfirmation, sendAdminClassNotification } from "@/lib/notifications";
 import { CLASS_TYPE_CONFIG } from "@/lib/class-types";
@@ -245,23 +245,27 @@ export async function POST(request: NextRequest) {
 
   const spotsRemaining = (updated?.spots_remaining as number) ?? 0;
 
-  // ── Send confirmation notifications (fire & forget) ───────────────────────
-  sendClassBookingConfirmation({
-    className:       session.title as string,
-    startISO:        session.start_datetime as string,
-    durationMinutes: session.duration_minutes as number,
-    amountCents:     amountToChargeCents,
-    quantity,
-    client:          { ...client, mobile },
-  }).catch(console.error);
+  // ── Send confirmation notifications (after response, guaranteed) ──────────
+  after(() =>
+    sendClassBookingConfirmation({
+      className:       session.title as string,
+      startISO:        session.start_datetime as string,
+      durationMinutes: session.duration_minutes as number,
+      amountCents:     amountToChargeCents,
+      quantity,
+      client:          { ...client, mobile },
+    }).catch(console.error),
+  );
 
   // Admin notification to Amanda
-  sendAdminClassNotification({
-    className: session.title as string,
-    startISO:  session.start_datetime as string,
-    quantity,
-    client:    { ...client, mobile },
-  }).catch(console.error);
+  after(() =>
+    sendAdminClassNotification({
+      className: session.title as string,
+      startISO:  session.start_datetime as string,
+      quantity,
+      client:    { ...client, mobile },
+    }).catch(console.error),
+  );
 
   return NextResponse.json({
     bookingId:      bookings[0].id,

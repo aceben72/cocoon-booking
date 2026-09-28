@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { generateGiftCardCode } from "@/lib/gift-cards";
-
-const VALID_DENOMINATIONS = [5000, 10000, 15000, 20000]; // $50, $100, $150, $200
+import {
+  GIFT_CARD_MAX_CENTS,
+  GIFT_CARD_MIN_CENTS,
+  isValidGiftCardAmountCents,
+} from "@/lib/gift-card-amounts";
 
 function supabase() {
   return createClient(
@@ -22,7 +25,7 @@ export async function POST(request: NextRequest) {
     personal_message,
     square_payment_token,
   } = body as {
-    denomination_cents?: number;
+    denomination_cents?: unknown;
     purchaser_name?: string;
     purchaser_email?: string;
     recipient_name?: string;
@@ -32,9 +35,11 @@ export async function POST(request: NextRequest) {
   };
 
   // ── Validate ──────────────────────────────────────────────────
-  if (!denomination_cents || !VALID_DENOMINATIONS.includes(denomination_cents)) {
+  if (!isValidGiftCardAmountCents(denomination_cents)) {
     return NextResponse.json(
-      { error: "Please select a valid denomination ($50, $100, $150, or $200)." },
+      {
+        error: `Please choose a gift card amount in whole dollars between ${formatDollars(GIFT_CARD_MIN_CENTS)} and ${formatDollars(GIFT_CARD_MAX_CENTS)}.`,
+      },
       { status: 400 },
     );
   }

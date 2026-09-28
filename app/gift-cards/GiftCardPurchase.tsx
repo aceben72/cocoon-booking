@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import {
+  GIFT_CARD_MAX_CENTS,
+  GIFT_CARD_MIN_CENTS,
+  GIFT_CARD_PRESET_CENTS,
+  formatGiftCardDollars,
+  parseGiftCardDollars,
+} from "@/lib/gift-card-amounts";
 
-const DENOMINATIONS = [
-  { cents: 5000, label: "$50" },
-  { cents: 10000, label: "$100" },
-  { cents: 15000, label: "$150" },
-  { cents: 20000, label: "$200" },
-];
+const RANGE_LABEL = `Between ${formatGiftCardDollars(GIFT_CARD_MIN_CENTS)} and ${formatGiftCardDollars(GIFT_CARD_MAX_CENTS)}`;
 
 const SQUARE_APP_ID = process.env.NEXT_PUBLIC_SQUARE_APP_ID ?? "";
 const SQUARE_LOCATION_ID = process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID ?? "";
@@ -40,12 +42,45 @@ interface ConfirmationData {
 
 interface Props {
   initialAmountCents?: number;
+  /** Open with the custom tile selected (prefilled from initialAmountCents if given). */
+  initialCustom?: boolean;
 }
 
-export default function GiftCardPurchase({ initialAmountCents }: Props) {
-  // Denomination
-  const initial = DENOMINATIONS.find((d) => d.cents === initialAmountCents) ?? null;
-  const [selected, setSelected] = useState<typeof DENOMINATIONS[0] | null>(initial);
+export default function GiftCardPurchase({ initialAmountCents, initialCustom = false }: Props) {
+  // Amount — a preset tile, or a custom whole-dollar value typed by the purchaser
+  const initialPresetCents =
+    !initialCustom && initialAmountCents !== undefined && GIFT_CARD_PRESET_CENTS.includes(initialAmountCents)
+      ? initialAmountCents
+      : null;
+  const initialCustomInput = initialCustom && initialAmountCents ? String(initialAmountCents / 100) : "";
+  const [isCustom, setIsCustom] = useState(initialCustom);
+  const [presetCents, setPresetCents] = useState<number | null>(initialPresetCents);
+  const [customInput, setCustomInput] = useState(initialCustomInput);
+  const customInputRef = useRef<HTMLInputElement>(null);
+
+  const amountCents: number | null = isCustom ? parseGiftCardDollars(customInput) : presetCents;
+  const amountLabel = amountCents !== null ? formatGiftCardDollars(amountCents) : "";
+  const customError =
+    isCustom && customInput.trim() !== "" && amountCents === null
+      ? /^\d+$/.test(customInput.trim())
+        ? `Please enter an amount ${RANGE_LABEL.toLowerCase()}.`
+        : "Please enter a whole dollar amount (no cents)."
+      : "";
+
+  // ?amount=custom → focus the empty custom input on load
+  useEffect(() => {
+    if (initialCustom && !initialCustomInput) customInputRef.current?.focus();
+  }, [initialCustom, initialCustomInput]);
+
+  const selectPreset = (cents: number) => {
+    setIsCustom(false);
+    setPresetCents(cents);
+  };
+  const selectCustom = () => {
+    setIsCustom(true);
+    // Input only mounts once isCustom is true
+    requestAnimationFrame(() => customInputRef.current?.focus());
+  };
 
   // Form fields
   const [purchaserName, setPurchaserName] = useState("");
@@ -106,7 +141,10 @@ export default function GiftCardPurchase({ initialAmountCents }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selected) { setError("Please select a denomination."); return; }
+    if (amountCents === null) {
+      setError(isCustom ? `Please enter a whole dollar amount ${RANGE_LABEL.toLowerCase()}.` : "Please select an amount.");
+      return;
+    }
     if (!cardRef.current) { setError("Payment form is not ready yet."); return; }
     setSubmitting(true);
     setError("");
@@ -123,7 +161,7 @@ export default function GiftCardPurchase({ initialAmountCents }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          denomination_cents: selected.cents,
+          denomination_cents: amountCents,
           purchaser_name: purchaserName,
           purchaser_email: purchaserEmail,
           recipient_name: recipientName,
@@ -149,7 +187,9 @@ export default function GiftCardPurchase({ initialAmountCents }: Props) {
 
   const reset = () => {
     setConfirmation(null);
-    setSelected(initial);
+    setIsCustom(initialCustom);
+    setPresetCents(initialPresetCents);
+    setCustomInput(initialCustomInput);
     setPurchaserName("");
     setPurchaserEmail("");
     setRecipientName("");
@@ -219,33 +259,100 @@ export default function GiftCardPurchase({ initialAmountCents }: Props) {
                 Select Amount
               </h2>
               <div className="grid grid-cols-2 gap-3">
-                {DENOMINATIONS.map((d) => (
-                  <button
-                    key={d.cents}
-                    type="button"
-                    onClick={() => setSelected(d)}
+                {GIFT_CARD_PRESET_CENTS.map((cents) => {
+                  const active = !isCustom && presetCents === cents;
+                  return (
+                    <button
+                      key={cents}
+                      type="button"
+                      onClick={() => selectPreset(cents)}
+                      aria-pressed={active}
+                      className={[
+                        "rounded-xl border-2 py-5 flex flex-col items-center justify-center gap-1 transition-all",
+                        active
+                          ? "border-[#044e77] bg-[#044e77] text-white shadow-md"
+                          : "border-[#e8e0d8] text-[#3a3330] hover:border-[#fbb040] hover:shadow-sm",
+                      ].join(" ")}
+                    >
+                      <span className={[
+                        "font-[family-name:var(--font-cormorant)] text-3xl font-medium",
+                        active ? "text-[#fbb040]" : "text-[#044e77]",
+                      ].join(" ")}>
+                        {formatGiftCardDollars(cents)}
+                      </span>
+                      <span className={[
+                        "text-xs font-light",
+                        active ? "text-white/70" : "text-[#9a8f87]",
+                      ].join(" ")}>
+                        gift card
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {/* Custom amount — full-width row under the presets */}
+                <button
+                  type="button"
+                  onClick={selectCustom}
+                  aria-pressed={isCustom}
+                  className={[
+                    "col-span-2 rounded-xl border-2 py-5 flex flex-col items-center justify-center gap-1 transition-all",
+                    isCustom
+                      ? "border-[#044e77] bg-[#044e77] text-white shadow-md"
+                      : "border-[#e8e0d8] text-[#3a3330] hover:border-[#fbb040] hover:shadow-sm",
+                  ].join(" ")}
+                >
+                  <span className={[
+                    "font-[family-name:var(--font-cormorant)] text-3xl font-medium",
+                    isCustom ? "text-[#fbb040]" : "text-[#044e77]",
+                  ].join(" ")}>
+                    Custom amount
+                  </span>
+                  <span className={[
+                    "text-xs font-light",
+                    isCustom ? "text-white/70" : "text-[#9a8f87]",
+                  ].join(" ")}>
+                    choose your own value
+                  </span>
+                </button>
+              </div>
+
+              {isCustom && (
+                <div className="mt-4">
+                  <label htmlFor="gc-custom-amount" className="block text-xs text-[#7a6f68] font-light mb-1">
+                    Gift card amount *
+                  </label>
+                  <div
                     className={[
-                      "rounded-xl border-2 py-5 flex flex-col items-center justify-center gap-1 transition-all",
-                      selected?.cents === d.cents
-                        ? "border-[#044e77] bg-[#044e77] text-white shadow-md"
-                        : "border-[#e8e0d8] text-[#3a3330] hover:border-[#fbb040] hover:shadow-sm",
+                      "flex items-center border rounded-xl px-4 transition-colors focus-within:border-[#044e77]",
+                      customError ? "border-red-300" : "border-[#e8e0d8]",
                     ].join(" ")}
                   >
-                    <span className={[
-                      "font-[family-name:var(--font-cormorant)] text-3xl font-medium",
-                      selected?.cents === d.cents ? "text-[#fbb040]" : "text-[#044e77]",
-                    ].join(" ")}>
-                      {d.label}
-                    </span>
-                    <span className={[
-                      "text-xs font-light",
-                      selected?.cents === d.cents ? "text-white/70" : "text-[#9a8f87]",
-                    ].join(" ")}>
-                      gift card
-                    </span>
-                  </button>
-                ))}
-              </div>
+                    <span className="font-[family-name:var(--font-cormorant)] text-2xl text-[#044e77] mr-1">$</span>
+                    <input
+                      id="gc-custom-amount"
+                      ref={customInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      autoComplete="off"
+                      value={customInput}
+                      onChange={(e) => setCustomInput(e.target.value)}
+                      placeholder="75"
+                      aria-invalid={!!customError}
+                      aria-describedby="gc-custom-amount-help"
+                      className="w-full py-3 font-[family-name:var(--font-cormorant)] text-2xl font-medium
+                                 text-[#044e77] placeholder:text-[#c8bfb8] bg-transparent focus:outline-none"
+                    />
+                  </div>
+                  <p
+                    id="gc-custom-amount-help"
+                    className={["text-xs mt-1 font-light", customError ? "text-red-600" : "text-[#b0a499]"].join(" ")}
+                  >
+                    {customError || RANGE_LABEL}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* What to expect */}
@@ -339,17 +446,17 @@ export default function GiftCardPurchase({ initialAmountCents }: Props) {
             </div>
 
             {/* Order summary */}
-            {selected && (
+            {amountCents !== null && (
               <div className="bg-white border border-[#e8e0d8] rounded-2xl p-6">
                 <h2 className="text-xs uppercase tracking-wider text-[#b0a499] font-light mb-4">
                   Order Summary
                 </h2>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-[#7a6f68] font-light">
-                    {selected.label} Cocoon Gift Card
+                    {amountLabel} Cocoon Gift Card
                   </span>
                   <span className="font-[family-name:var(--font-cormorant)] text-2xl font-medium text-[#044e77]">
-                    {selected.label}
+                    {amountLabel}
                   </span>
                 </div>
               </div>
@@ -395,10 +502,10 @@ export default function GiftCardPurchase({ initialAmountCents }: Props) {
 
             <button
               type="submit"
-              disabled={!cardReady || submitting || !selected}
+              disabled={!cardReady || submitting || amountCents === null}
               className={[
                 "w-full rounded-xl py-4 px-6 font-medium text-white transition-all text-base",
-                cardReady && !submitting && selected
+                cardReady && !submitting && amountCents !== null
                   ? "bg-[#044e77] hover:bg-[#033d5c] active:bg-[#022d44]"
                   : "bg-[#b0c4d4] cursor-not-allowed",
               ].join(" ")}
@@ -408,8 +515,10 @@ export default function GiftCardPurchase({ initialAmountCents }: Props) {
                   <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                   Processing payment...
                 </span>
-              ) : selected ? (
-                `Purchase ${selected.label} Gift Card`
+              ) : amountCents !== null ? (
+                `Purchase ${amountLabel} Gift Card`
+              ) : isCustom ? (
+                "Enter an amount to continue"
               ) : (
                 "Select an amount to continue"
               )}

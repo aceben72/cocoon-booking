@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
-import { aestToUTC, normaliseMobile } from "@/lib/utils";
+import { aestToUTC, normaliseMobile, cashSavingText } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
@@ -435,6 +435,7 @@ export async function POST(request: NextRequest) {
     client: { ...client, mobile },
     startISO,
     amountPaidCents,
+    discountCents: totalDiscountCents,
     paidViaFacialPackage: facialPackagePaidInFull,
     isNewClient: !!client.is_new_client,
     notes: client.notes || null,
@@ -460,16 +461,17 @@ export async function POST(request: NextRequest) {
 
 async function sendConfirmationNotifications(params: {
   appointmentId: string;
-  service: { name: string; duration_minutes: number; price_cents: number };
+  service: { name: string; duration_minutes: number; price_cents: number; cash_price_cents?: number | null };
   client: { first_name: string; last_name: string; email: string; mobile: string; notes?: string | null };
   startISO: string;
   amountPaidCents: number;
+  discountCents: number;
   paidViaFacialPackage: boolean;
   isNewClient: boolean;
   notes?: string | null;
   intakeFormUrl: string | null;
 }) {
-  const { service, client, startISO, amountPaidCents, paidViaFacialPackage, isNewClient, notes, intakeFormUrl } = params;
+  const { service, client, startISO, amountPaidCents, discountCents, paidViaFacialPackage, isNewClient, notes, intakeFormUrl } = params;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -495,7 +497,7 @@ async function sendConfirmationNotifications(params: {
     let emailHtml: string;
     try {
       console.log("[bookings] building email HTML");
-      emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, paidViaFacialPackage, isNewClient, intakeFormUrl });
+      emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, discountCents, paidViaFacialPackage, isNewClient, intakeFormUrl });
       console.log("[bookings] email HTML built, length:", emailHtml.length);
     } catch (buildErr) {
       console.error("[bookings] buildConfirmationEmail threw:", buildErr);
@@ -570,20 +572,24 @@ async function sendConfirmationNotifications(params: {
 
 function buildConfirmationEmail(params: {
   client: { first_name: string; last_name: string };
-  service: { name: string; duration_minutes: number; price_cents: number };
+  service: { name: string; duration_minutes: number; price_cents: number; cash_price_cents?: number | null };
   displayDate: string;
   displayTime: string;
   amountPaidCents: number;
+  discountCents: number;
   paidViaFacialPackage: boolean;
   isNewClient: boolean;
   intakeFormUrl: string | null;
 }) {
-  const { client, service, displayDate, displayTime, amountPaidCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
+  const { client, service, displayDate, displayTime, amountPaidCents, discountCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
   const paidDisplay = paidViaFacialPackage
     ? "Paid via Facial Package"
     : amountPaidCents === 0
       ? "Covered by promotions"
       : `$${(amountPaidCents / 100).toFixed(0)}`;
+  // Cash saving only applies to a balance still to be paid on the day.
+  const balanceOwing = !paidViaFacialPackage && amountPaidCents < service.price_cents - discountCents;
+  const cashSaving = balanceOwing ? cashSavingText(service.price_cents, service.cash_price_cents) : null;
   const duration = service.duration_minutes < 60
     ? `${service.duration_minutes} min`
     : `${Math.floor(service.duration_minutes / 60)} hr${service.duration_minutes % 60 ? ` ${service.duration_minutes % 60} min` : ""}`;
@@ -645,6 +651,7 @@ function buildConfirmationEmail(params: {
                 <td>
                   <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Amount Paid</span><br>
                   <strong style="font-size:16px;color:#044e77;">${paidDisplay}</strong>
+                  ${cashSaving ? `<br><span style="font-size:13px;color:#7a6f68;">${cashSaving}</span>` : ""}
                 </td>
               </tr>
             </table>

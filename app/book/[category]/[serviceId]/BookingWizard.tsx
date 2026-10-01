@@ -8,7 +8,7 @@ import StepTime from "./StepTime";
 import StepDetails from "./StepDetails";
 import StepPayment from "./StepPayment";
 import StepConfirmation from "./StepConfirmation";
-import { formatPrice, formatDuration, formatTime } from "@/lib/utils";
+import { formatPrice, formatDuration, formatTime, cashSavingText } from "@/lib/utils";
 import Link from "next/link";
 
 // Wizard steps: 2=Date, 3=Time, 4=Details, 5=Payment (confirmation is step 6 but shown as "done")
@@ -84,6 +84,11 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
               <p className="text-sm text-[#9a8f87] font-light">
                 {formatDuration(service.duration_minutes)} · {formatPrice(service.price_cents)}
               </p>
+              {cashSavingText(service.price_cents, service.cash_price_cents) && (
+                <p className="text-xs text-[#b0a499] font-light mt-0.5">
+                  {cashSavingText(service.price_cents, service.cash_price_cents)}
+                </p>
+              )}
             </div>
             <Link
               href={deepLinked ? "/book" : `/book/${service.category}`}

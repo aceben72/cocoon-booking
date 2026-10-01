@@ -15,7 +15,8 @@ export interface Service {
   name: string;
   duration_minutes: number;
   padding_minutes: number;
-  price_cents: number;
+  price_cents: number;        // headline (card) price — what's charged online
+  cash_price_cents?: number | null; // price when paying by cash, PayID or bank transfer; null/absent = no saving
   deposit_cents?: number;     // if set, overrides the default $50 deposit in the client booking flow
   description?: string;       // shown on service card and booking summary
   active: boolean;

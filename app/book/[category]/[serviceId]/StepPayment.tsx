@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { Service, ClientDetailsForm } from "@/types";
-import { formatPrice, formatDuration, formatTime } from "@/lib/utils";
+import { formatPrice, formatDuration, formatTime, cashSavingText } from "@/lib/utils";
 
 interface BookingResult {
   appointmentId: string;
@@ -366,6 +366,15 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
           <SummaryRow label="Date" value={displayDate} />
           <SummaryRow label="Time" value={formatTime(time)} />
           <SummaryRow label="Name" value={`${client.first_name} ${client.last_name}`} />
+          <SummaryRow label="Price" value={formatPrice(service.price_cents)} />
+          {/* Cash saving only applies to a balance paid on the day, so hide it
+              when the whole amount is being charged to card now. */}
+          {paymentMode === "deposit" && !facialPackageCoversAll &&
+            cashSavingText(service.price_cents, service.cash_price_cents) && (
+            <p className="text-xs text-[#9a8f87] font-light text-right -mt-2">
+              {cashSavingText(service.price_cents, service.cash_price_cents)}
+            </p>
+          )}
           <div className="pt-3 border-t border-[#f0ebe4] space-y-1.5">
             {/* Service total */}
             {(couponDiscountCents > 0 || giftCardApplied > 0) && (

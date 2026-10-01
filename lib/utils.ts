@@ -13,6 +13,24 @@ export function formatPrice(cents: number): string {
     : `$${dollars.toFixed(2)}`;
 }
 
+/**
+ * Saving for paying by cash, PayID or bank transfer instead of card, in whole
+ * dollars. Returns 0 when there's no cash price or it isn't lower.
+ */
+export function cashSavingDollars(priceCents: number, cashPriceCents: number | null | undefined): number {
+  if (cashPriceCents == null || cashPriceCents >= priceCents) return 0;
+  return Math.round((priceCents - cashPriceCents) / 100);
+}
+
+/** "Save $X when you pay by cash, PayID or bank transfer", or null if no saving. */
+export function cashSavingText(priceCents: number, cashPriceCents: number | null | undefined): string | null {
+  const dollars = cashSavingDollars(priceCents, cashPriceCents);
+  return dollars > 0 ? `Save $${dollars} when you pay by cash, PayID or bank transfer` : null;
+}
+
+export const CASH_SAVING_NOTE =
+  "Pay by cash, PayID or bank transfer on the day and save the card fee — the discount is taken off at checkout.";
+
 /** Format duration in minutes to human string, e.g. 90 → "1 hr 30 min" */
 export function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;

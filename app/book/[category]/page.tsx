@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import BookingProgress from "@/components/BookingProgress";
 import { CATEGORY_META, SERVICES } from "@/lib/services-data";
-import { formatPrice, formatDuration } from "@/lib/utils";
+import { formatPrice, formatDuration, cashSavingText, CASH_SAVING_NOTE } from "@/lib/utils";
 import type { ServiceCategory } from "@/types";
 import AllCategoriesLink from "../AllCategoriesLink";
 
@@ -63,9 +63,16 @@ export default async function SelectServicePage({ params }: Props) {
                 )}
               </div>
               <div className="flex items-center gap-4 flex-shrink-0 ml-4">
-                <span className="text-[#044e77] font-medium text-lg">
-                  {formatPrice(service.price_cents)}
-                </span>
+                <div className="text-right">
+                  <span className="text-[#044e77] font-medium text-lg">
+                    {formatPrice(service.price_cents)}
+                  </span>
+                  {cashSavingText(service.price_cents, service.cash_price_cents) && (
+                    <p className="text-xs text-[#9a8f87] font-light mt-0.5 max-w-[11rem]">
+                      {cashSavingText(service.price_cents, service.cash_price_cents)}
+                    </p>
+                  )}
+                </div>
                 <svg
                   className="w-5 h-5 text-[#c8bfb8] group-hover:text-[#fbb040] transition-colors"
                   fill="none"
@@ -79,6 +86,10 @@ export default async function SelectServicePage({ params }: Props) {
             </Link>
           ))}
         </div>
+
+        <p className="text-sm text-[#7a6f68] font-light text-center mt-8 leading-relaxed">
+          {CASH_SAVING_NOTE}
+        </p>
       </div>
     </>
   );

@@ -27,12 +27,21 @@ update public.services set price_cents = 10200, cash_price_cents = 9900  where i
 update public.services set price_cents = 15400, cash_price_cents = 14900 where id = '82488878-f180-4de6-a257-3ab6c8e83893' and price_cents in (14900, 15400); -- Indulge Facial
 update public.services set price_cents = 20500, cash_price_cents = 19900 where id = '0e83c613-14e1-4b7e-886f-e7c4553f161c' and price_cents in (19900, 20500); -- Opulence Facial
 
+-- Lifting Code Facial: listed in lib/services-data.ts but had no DB row, so
+-- POST /api/bookings failed its name lookup ("Service not found in database")
+-- on submit. The lookup keys on name; id comes from the uuid default.
+insert into public.services (category, name, duration_minutes, padding_minutes, price_cents, cash_price_cents, active)
+select 'facials', 'Lifting Code Facial', 90, 30, 24700, 23900, true
+where not exists (select 1 from public.services where name = 'Lifting Code Facial');
+
 -- LED
 update public.services set price_cents = 4700,  cash_price_cents = 4500  where id = '1da95ba9-ac4a-4984-b8dd-03375aee1a7a' and price_cents in (4500, 4700);   -- Basic LED Treatment
 update public.services set price_cents = 6100,  cash_price_cents = 5900  where id = 'b0eeb66e-bcd9-4787-aefb-f7088139df45' and price_cents in (5900, 6100);   -- Deluxe LED Treatment
 
 -- Treatment plans
-update public.services set price_cents = 92100, cash_price_cents = 89400 where id = 'a8938403-b47e-4652-a4b8-6405cad112a5' and price_cents in (89400, 92100); -- Purity Herbal Peeling System
+-- Purity: real current price is $962 (changed from $894 on 11 June 2026; the DB
+-- row was never updated), so the guard accepts the stale DB value too.
+update public.services set price_cents = 99100, cash_price_cents = 96200 where id = 'a8938403-b47e-4652-a4b8-6405cad112a5' and price_cents in (89400, 96200, 99100); -- Purity Herbal Peeling System
 update public.services set price_cents = 99900, cash_price_cents = 97400 where id = '19152b07-1bfb-449f-95c2-f5b73f439ff0' and price_cents in (97400, 99900); -- Agebiotic System
 
 -- Brows
@@ -48,5 +57,5 @@ update public.services set price_cents = 13400, cash_price_cents = 13000 where i
 update public.services set price_cents = 16400, cash_price_cents = 15900 where id = '0f1260e8-9c01-4683-898c-a64fc65b9a81' and price_cents in (15900, 16400); -- Personal Make Up Class
 update public.services set price_cents = 18500, cash_price_cents = 17900 where id = '34e4b315-66c5-4c02-9d99-7f5c25045cc7' and price_cents in (17900, 18500); -- Mother Daughter Make-Up Class
 
--- Verify (read-only): expect 16 rows with cash_price_cents set
+-- Verify (read-only): expect 17 rows with cash_price_cents set (all but Treatment Plan Facial)
 -- select name, price_cents, cash_price_cents from public.services order by name;

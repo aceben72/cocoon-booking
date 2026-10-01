@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { Service, ClientDetailsForm } from "@/types";
-import { formatPrice, formatDuration, formatTime, cashSavingText } from "@/lib/utils";
+import { formatPrice, formatDuration, formatTime, serviceCashSavingText, hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
 
 interface BookingResult {
   appointmentId: string;
@@ -55,7 +55,7 @@ const SQUARE_SDK_URL =
 
 export default function StepPayment({ service, date, time, client, onSuccess, onError, onBack }: Props) {
   // Only certain categories offer the deposit option; all others pay in full.
-  const hasDepositOption = !["brow-treatments", "led-light-treatments", "mother-daughter"].includes(service.category);
+  const hasDepositOption = serviceHasDepositOption(service);
   const DEPOSIT_CENTS = service.deposit_cents ?? DEFAULT_DEPOSIT_CENTS;
   const [paymentMode, setPaymentMode] = useState<"full" | "deposit">("full");
 
@@ -370,9 +370,9 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
           {/* Cash saving only applies to a balance paid on the day, so hide it
               when the whole amount is being charged to card now. */}
           {paymentMode === "deposit" && !facialPackageCoversAll &&
-            cashSavingText(service.price_cents, service.cash_price_cents) && (
+            serviceCashSavingText(service) && (
             <p className="text-xs text-[#9a8f87] font-light text-right -mt-2">
-              {cashSavingText(service.price_cents, service.cash_price_cents)}
+              {serviceCashSavingText(service)}
             </p>
           )}
           <div className="pt-3 border-t border-[#f0ebe4] space-y-1.5">

@@ -47,7 +47,7 @@ export const SERVICES: Service[] = [
   { id: "basic-facial", category: "facials", name: "Basic Facial", duration_minutes: 45, padding_minutes: 30, price_cents: 10200, cash_price_cents: 9900, active: true },
   { id: "indulge-facial", category: "facials", name: "Indulge Facial", duration_minutes: 60, padding_minutes: 30, price_cents: 15400, cash_price_cents: 14900, active: true },
   { id: "opulence-facial", category: "facials", name: "Opulence Facial", duration_minutes: 80, padding_minutes: 30, price_cents: 20500, cash_price_cents: 19900, active: true },
-  { id: "lifting-code-facial", category: "facials", name: "Lifting Code Facial", duration_minutes: 90, padding_minutes: 30, price_cents: 23900, active: true },
+  { id: "lifting-code-facial", category: "facials", name: "Lifting Code Facial", duration_minutes: 90, padding_minutes: 30, price_cents: 24700, cash_price_cents: 23900, active: true },
 
   // LED Light Treatments
   { id: "basic-led", category: "led-light-treatments", name: "Basic LED Treatment", duration_minutes: 35, padding_minutes: 30, price_cents: 4700, cash_price_cents: 4500, active: true },
@@ -76,8 +76,8 @@ export const SERVICES: Service[] = [
     name: "Purity Herbal Peeling System",
     duration_minutes: 75,
     padding_minutes: 30,
-    price_cents: 92100,
-    cash_price_cents: 89400,
+    price_cents: 99100,
+    cash_price_cents: 96200,
     deposit_cents: 52700,
     description: "Specifically for those with acne skin or excess oiliness in both teenage and mature age skin.",
     active: true,

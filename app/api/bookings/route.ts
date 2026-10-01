@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
-import { aestToUTC, normaliseMobile, cashSavingText } from "@/lib/utils";
+import { aestToUTC, normaliseMobile, hasDepositOption, serviceCashSavingText } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
 import { sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
 import { hasBookingConflict } from "@/lib/booking-conflicts";
-import type { ClientDetailsForm } from "@/types";
+import type { ClientDetailsForm, Service } from "@/types";
 
 interface BookingRequest {
   serviceId: string;
@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
   // The deposit amount is authoritative server-side — we only accept the
   // client-signalled deposit if the configured DEPOSIT_CENTS matches.
   // Any other client-supplied value is ignored and full payment is charged.
-  const depositAllowed = !["brow-treatments", "led-light-treatments", "mother-daughter"].includes(service.category);
+  const depositAllowed = hasDepositOption(service);
   const DEPOSIT_CENTS = service.deposit_cents ?? 5000; // $50 default, matches StepPayment
   let amountToChargeCents: number;
 
@@ -461,7 +461,7 @@ export async function POST(request: NextRequest) {
 
 async function sendConfirmationNotifications(params: {
   appointmentId: string;
-  service: { name: string; duration_minutes: number; price_cents: number; cash_price_cents?: number | null };
+  service: Service;
   client: { first_name: string; last_name: string; email: string; mobile: string; notes?: string | null };
   startISO: string;
   amountPaidCents: number;
@@ -572,7 +572,7 @@ async function sendConfirmationNotifications(params: {
 
 function buildConfirmationEmail(params: {
   client: { first_name: string; last_name: string };
-  service: { name: string; duration_minutes: number; price_cents: number; cash_price_cents?: number | null };
+  service: Service;
   displayDate: string;
   displayTime: string;
   amountPaidCents: number;
@@ -589,7 +589,7 @@ function buildConfirmationEmail(params: {
       : `$${(amountPaidCents / 100).toFixed(0)}`;
   // Cash saving only applies to a balance still to be paid on the day.
   const balanceOwing = !paidViaFacialPackage && amountPaidCents < service.price_cents - discountCents;
-  const cashSaving = balanceOwing ? cashSavingText(service.price_cents, service.cash_price_cents) : null;
+  const cashSaving = balanceOwing ? serviceCashSavingText(service) : null;
   const duration = service.duration_minutes < 60
     ? `${service.duration_minutes} min`
     : `${Math.floor(service.duration_minutes / 60)} hr${service.duration_minutes % 60 ? ` ${service.duration_minutes % 60} min` : ""}`;

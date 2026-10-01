@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { Service } from "@/types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -26,6 +27,24 @@ export function cashSavingDollars(priceCents: number, cashPriceCents: number | n
 export function cashSavingText(priceCents: number, cashPriceCents: number | null | undefined): string | null {
   const dollars = cashSavingDollars(priceCents, cashPriceCents);
   return dollars > 0 ? `Save $${dollars} when you pay by cash, PayID or bank transfer` : null;
+}
+
+/**
+ * Whether a service can be booked online with a deposit (balance paid on the
+ * day). Services without this are fully prepaid by card at booking. Single
+ * source of truth for the booking flow (StepPayment) and POST /api/bookings.
+ */
+const FULLY_PREPAID_CATEGORIES: Service["category"][] = ["brow-treatments", "led-light-treatments", "mother-daughter"];
+export function hasDepositOption(service: Pick<Service, "category">): boolean {
+  return !FULLY_PREPAID_CATEGORIES.includes(service.category);
+}
+
+/**
+ * Client-facing cash saving line for a service, or null. Fully prepaid
+ * services never show it — online clients can't pay their balance in cash.
+ */
+export function serviceCashSavingText(service: Pick<Service, "category" | "price_cents" | "cash_price_cents">): string | null {
+  return hasDepositOption(service) ? cashSavingText(service.price_cents, service.cash_price_cents) : null;
 }
 
 export const CASH_SAVING_NOTE =

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { Service, ClientDetailsForm } from "@/types";
-import { formatPrice, formatDuration, formatTime, serviceCashSavingText, hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
+import { formatPrice, formatDuration, formatTime, serviceCashSavingText, serviceCashSavingCents, hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
 
 interface BookingResult {
   appointmentId: string;
@@ -115,6 +115,18 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
   } else {
     amountPaidCents = Math.max(0, service.price_cents - couponDiscountCents - giftCardApplied);
   }
+
+  // Remainder due on the day if the client picks the deposit option, worked
+  // out from the amounts after any coupon/gift card applied on this screen —
+  // shown on the deposit option before they choose, so independent of paymentMode.
+  const depositOptionPaidCents = Math.max(0, DEPOSIT_CENTS - couponDiscountCents - giftCardApplied);
+  const depositCardRemainderCents = facialPackageCoversAll
+    ? 0
+    : Math.max(0, service.price_cents - couponDiscountCents - giftCardApplied - depositOptionPaidCents);
+  const cashSavingCents = serviceCashSavingCents(service);
+  const depositRemainderText = hasDepositOption && cashSavingCents > 0 && depositCardRemainderCents > 0
+    ? `Remainder ${formatPrice(depositCardRemainderCents)} on the day, or ${formatPrice(Math.max(0, depositCardRemainderCents - cashSavingCents))} if you pay by cash, PayID or bank transfer`
+    : null;
 
   // Square requires minimum 50 cents — if discounts cover everything, we do $0 payment (no card needed)
   const needsCardPayment = amountPaidCents >= 50;
@@ -463,6 +475,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
               selected={paymentMode === "deposit"}
               onClick={() => setPaymentMode("deposit")}
               title={`Pay deposit — ${formatPrice(DEPOSIT_CENTS)} today, remainder due at appointment`}
+              subtitle={depositRemainderText}
             />
           </div>
         </div>
@@ -703,11 +716,13 @@ function PaymentOption({
   selected,
   onClick,
   title,
+  subtitle,
 }: {
   id: string;
   selected: boolean;
   onClick: () => void;
   title: string;
+  subtitle?: string | null;
 }) {
   return (
     <button
@@ -729,8 +744,13 @@ function PaymentOption({
       >
         {selected && <div className="w-2 h-2 rounded-full bg-[#044e77]" />}
       </div>
-      <span className={`text-sm font-light ${selected ? "text-[#044e77] font-medium" : "text-[#3a3330]"}`}>
-        {title}
+      <span className="flex flex-col">
+        <span className={`text-sm font-light ${selected ? "text-[#044e77] font-medium" : "text-[#3a3330]"}`}>
+          {title}
+        </span>
+        {subtitle && (
+          <span className="text-xs text-[#9a8f87] font-light mt-0.5">{subtitle}</span>
+        )}
       </span>
     </button>
   );

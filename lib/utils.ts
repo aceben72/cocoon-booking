@@ -47,6 +47,11 @@ export function serviceCashSavingText(service: Pick<Service, "category" | "price
   return hasDepositOption(service) ? cashSavingText(service.price_cents, service.cash_price_cents) : null;
 }
 
+/** Cash saving in cents for a service (0 for fully prepaid services or no saving). */
+export function serviceCashSavingCents(service: Pick<Service, "category" | "price_cents" | "cash_price_cents">): number {
+  return hasDepositOption(service) ? cashSavingDollars(service.price_cents, service.cash_price_cents) * 100 : 0;
+}
+
 export const CASH_SAVING_NOTE =
   "Pay by cash, PayID or bank transfer on the day and save the card fee — the discount is taken off at checkout.";
 

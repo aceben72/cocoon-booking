@@ -5,6 +5,8 @@ import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile } from "@/lib/utils";
 import { sendPaymentRequest, sendAppointmentConfirmation, sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
 import { hasBookingConflict } from "@/lib/booking-conflicts";
+import { adminBookingAmounts, type AdminBookingMode } from "@/lib/complete-payment";
+import { getRewardForNewBooking } from "@/lib/loyalty";
 
 function supabase() {
   return createClient(
@@ -22,10 +24,16 @@ export async function POST(request: NextRequest) {
     lastName?: string;
     email?: string;
     mobile?: string;
-    noCharge?: boolean;
+    mode?: AdminBookingMode;
+    noCharge?: boolean; // legacy (cached admin pages): true = no_charge, otherwise payment_link
   };
 
   const { serviceId, date, time, firstName, lastName, email, mobile: rawMobile, noCharge } = body;
+  const MODES: AdminBookingMode[] = ["pay_on_day", "payment_link", "no_charge"];
+  if (body.mode !== undefined && !MODES.includes(body.mode)) {
+    return NextResponse.json({ error: "Invalid booking type" }, { status: 400 });
+  }
+  const mode: AdminBookingMode = body.mode ?? (noCharge ? "no_charge" : "payment_link");
 
   if (!serviceId || !date || !time || !firstName || !lastName || !email || !rawMobile) {
     return NextResponse.json({ error: "All fields are required" }, { status: 400 });
@@ -105,34 +113,46 @@ export async function POST(request: NextRequest) {
     clientId = newClient.id as string;
   }
 
-  const isNoCharge = noCharge === true || service.admin_only === true;
+  // Loyalty: a payment-link booking gets a due reward up front so the link
+  // never charges more than is owed. Pay-on-the-day bookings show the reward
+  // as due and it's applied at Complete.
+  let loyaltyRewardDueCents = 0;
+  if (mode === "payment_link") {
+    try {
+      loyaltyRewardDueCents = await getRewardForNewBooking(db, existingClient ? (existingClient.id as string) : null, dbService.id as string, startISO);
+    } catch (err) {
+      console.error("[admin/bookings] loyalty lookup failed:", err);
+    }
+  }
+
+  // Price comes from the service (lib/services-data.ts, same as online
+  // booking). Only "no charge" and admin-only services are $0.
+  const amounts = adminBookingAmounts({
+    mode,
+    priceCents: service.price_cents,
+    adminOnly: service.admin_only === true,
+    loyaltyRewardDueCents,
+  });
+  const isNoCharge = amounts.amountCents === 0;
+  const isPaymentLink = amounts.status === "pending_payment";
 
   // Build appointment insert payload
-  const apptPayload = isNoCharge
-    ? {
-        service_id:       dbService.id,
-        client_id:        clientId,
-        start_datetime:   startISO,
-        end_datetime:     endISO,
-        status:           "confirmed",
-        amount_cents:     0,
-        amount_paid_cents: 0,
-      }
-    : (() => {
-        const token    = randomUUID();
-        const expiresAt = new Date(Date.now() + 48 * 60 * 60_000).toISOString();
-        return {
-          service_id:                      dbService.id,
-          client_id:                       clientId,
-          start_datetime:                  startISO,
-          end_datetime:                    endISO,
-          status:                          "pending_payment",
-          amount_cents:                    service.price_cents,
-          amount_paid_cents:               0,
-          payment_link_token:              token,
-          payment_link_token_expires_at:   expiresAt,
-        };
-      })();
+  const apptPayload = {
+    service_id:             dbService.id,
+    client_id:              clientId,
+    start_datetime:         startISO,
+    end_datetime:           endISO,
+    status:                 amounts.status,
+    amount_cents:           amounts.amountCents,
+    amount_paid_cents:      0,
+    loyalty_discount_cents: amounts.loyaltyDiscountCents,
+    ...(isPaymentLink
+      ? {
+          payment_link_token:            randomUUID(),
+          payment_link_token_expires_at: new Date(Date.now() + 48 * 60 * 60_000).toISOString(),
+        }
+      : {}),
+  };
 
   const { data: appointment, error: apptErr } = await db
     .from("appointments")
@@ -185,12 +205,12 @@ export async function POST(request: NextRequest) {
     }).catch((err) => console.error("[admin/bookings] mailchimp facial-booked tag failed:", err));
   }
 
-  if (isNoCharge) {
-    // Confirmed immediately — send standard confirmation email/SMS
+  if (!isPaymentLink) {
+    // Confirmed immediately (no charge, or pay on the day) — send standard confirmation email/SMS
     sendAppointmentConfirmation({
       serviceName:     service.name,
       durationMinutes: service.duration_minutes,
-      priceCents:      0,
+      priceCents:      amounts.amountCents,
       amountPaidCents: 0,
       startISO,
       intakeFormUrl,
@@ -212,7 +232,8 @@ export async function POST(request: NextRequest) {
       appointmentId: appointment.id,
       service: service.name,
       startISO,
-      noCharge: true,
+      noCharge: isNoCharge,
+      mode,
     }, { status: 201 });
   }
 

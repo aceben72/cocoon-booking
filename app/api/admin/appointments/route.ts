@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   let query = supabase()
     .from("appointments")
     .select(`
-      id, client_id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents, discount_cents, loyalty_discount_cents,
+      id, client_id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents, discount_cents, loyalty_discount_cents, cash_discount_cents,
       square_payment_id, notes, created_at,
       services ( name, category, duration_minutes, padding_minutes ),
       clients ( first_name, last_name, email, mobile, is_new_client ),

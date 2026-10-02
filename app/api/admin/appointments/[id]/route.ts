@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendRescheduleNotification, sendAppointmentCancellation, sendPendingPaymentCancellation, upsertMailchimpContact } from "@/lib/notifications";
+import { sendRescheduleNotification, sendAppointmentCancellation, sendPendingPaymentCancellation } from "@/lib/notifications";
+import { clearNewClientFlagIfReturning, onAppointmentCompleted } from "@/lib/appointment-completion";
 
 function supabase() {
   return createClient(
@@ -138,44 +139,11 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Clear is_new_client if this client now has more than one confirmed/completed appointment
-  if ((status === "confirmed" || status === "completed") && data.client_id) {
-    const { data: priorConfirmed } = await db
-      .from("appointments")
-      .select("id")
-      .eq("client_id", data.client_id)
-      .in("status", ["confirmed", "completed"])
-      .neq("id", id)
-      .limit(1);
-
-    if (priorConfirmed && priorConfirmed.length > 0) {
-      await db
-        .from("clients")
-        .update({ is_new_client: false })
-        .eq("id", data.client_id);
-    }
+  if (status === "confirmed" && data.client_id) {
+    await clearNewClientFlagIfReturning(db, data.client_id, id);
   }
-
-  // Mailchimp upsert + tag on completion
-  if (status === "completed" && apptDetails) {
-    const clientData = apptDetails.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean } | null;
-    const svcData    = apptDetails.services as unknown as { name: string; duration_minutes: number; category: string } | null;
-    if (clientData?.email && svcData?.category) {
-      // Personal Make Up Class is booked as an appointment (category "make-up",
-      // shared with Professional Make-Up Application), so it needs its own tag
-      // mapping key plus the base "makeup-class" tag — group classes get that
-      // base tag from the cron job in app/api/cron/reminders, but appointments
-      // are never seen by that cron.
-      const isPersonalClass = svcData.name === "Personal Make Up Class";
-      upsertMailchimpContact({
-        email: clientData.email,
-        firstName: clientData.first_name,
-        lastName: clientData.last_name,
-        serviceCategory: isPersonalClass ? "personal-make-up-class" : svcData.category,
-        isNewClient: clientData.is_new_client,
-        extraTags: isPersonalClass ? ["makeup-class"] : undefined,
-      }).catch(console.error);
-    }
+  if (status === "completed" && apptDetails?.status !== "completed") {
+    await onAppointmentCompleted(db, id);
   }
 
   // Cancellation notifications to client

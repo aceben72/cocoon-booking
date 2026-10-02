@@ -10,6 +10,8 @@ interface RawAppointment {
   start_datetime: string;
   status: string;
   amount_cents: number;
+  discount_cents: number;
+  loyalty_discount_cents: number;
   payment_link_token_expires_at: string;
   services: { name: string; category: string; duration_minutes: number } | null;
   clients: { first_name: string; last_name: string; email: string } | null;
@@ -24,7 +26,7 @@ async function getAppointmentByToken(token: string): Promise<RawAppointment | nu
   const { data } = await supabase
     .from("appointments")
     .select(`
-      id, start_datetime, status, amount_cents, payment_link_token_expires_at,
+      id, start_datetime, status, amount_cents, discount_cents, loyalty_discount_cents, payment_link_token_expires_at,
       services ( name, category, duration_minutes ),
       clients ( first_name, last_name, email )
     `)
@@ -105,7 +107,7 @@ export default async function PayPage({
         appointmentId={appt.id}
         serviceName={appt.services?.name ?? ""}
         serviceCategory={appt.services?.category ?? localService?.category ?? ""}
-        priceCents={appt.amount_cents}
+        priceCents={appt.amount_cents - (appt.discount_cents ?? 0) - (appt.loyalty_discount_cents ?? 0)}
         startISO={appt.start_datetime}
         clientFirstName={appt.clients?.first_name ?? ""}
         clientLastName={appt.clients?.last_name ?? ""}

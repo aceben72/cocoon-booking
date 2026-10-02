@@ -8,6 +8,7 @@ import { validateFacialPackage } from "@/lib/facial-packages";
 import { sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
 import { hasBookingConflict } from "@/lib/booking-conflicts";
 import { computeBookingPricing } from "@/lib/booking-pricing";
+import { onlineBookingPaymentRows } from "@/lib/complete-payment";
 import { getLoyaltyStatusByEmail, isLoyaltyServiceSlug, LOYALTY_REWARD_CENTS } from "@/lib/loyalty";
 import type { ClientDetailsForm, Service } from "@/types";
 
@@ -254,6 +255,18 @@ export async function POST(request: NextRequest) {
   // charged via Square (the deposit/full-payment remainder above).
   const amountPaidCents = giftCardAppliedCents + amountToChargeCents;
 
+  // How it was paid — one appointment_payments row each. Their sum is the
+  // stored amount_paid_cents (a DB trigger keeps it in step). A package
+  // redemption is recorded as paid by the package, so it never shows as owing.
+  const paymentRows = onlineBookingPaymentRows({
+    chargeNowCents: amountToChargeCents,
+    giftCardAppliedCents,
+    paidViaFacialPackage: facialPackagePaidInFull,
+    priceCents: service.price_cents,
+    squarePaymentId,
+  });
+  const storedAmountPaidCents = paymentRows.reduce((sum, r) => sum + r.amountCents, 0);
+
   // ── Upsert client ─────────────────────────────────────────────────────
   // Use ILIKE for case-insensitive email matching so that e.g. Jane@gmail.com
   // correctly resolves to an existing jane@gmail.com record.
@@ -314,7 +327,7 @@ export async function POST(request: NextRequest) {
       status: "confirmed",
       square_payment_id: squarePaymentId,
       amount_cents: service.price_cents,
-      amount_paid_cents: amountPaidCents,
+      amount_paid_cents: storedAmountPaidCents,
       discount_cents: totalDiscountCents,
       loyalty_discount_cents: loyaltyDiscountCents,
       coupon_id: couponId,
@@ -329,6 +342,24 @@ export async function POST(request: NextRequest) {
       { error: `Failed to create appointment: ${apptError?.message ?? "unknown"} (code: ${apptError?.code ?? "?"})` },
       { status: 500 },
     );
+  }
+
+  // ── Record payments ───────────────────────────────────────────────────
+  if (paymentRows.length > 0) {
+    const { error: payErr } = await supabase.from("appointment_payments").insert(
+      paymentRows.map((r) => ({
+        appointment_id: appointment.id,
+        amount_cents: r.amountCents,
+        method: r.method,
+        square_payment_id: r.squarePaymentId,
+        recorded_by: "online",
+        notes: r.notes,
+      })),
+    );
+    if (payErr) {
+      // The booking and charge stand; flag loudly so the payment can be added by hand.
+      console.error("[bookings] PAYMENT ROW INSERT FAILED — add manually:", appointment.id, paymentRows, payErr);
+    }
   }
 
   // ── Record coupon use ─────────────────────────────────────────────────

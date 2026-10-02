@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { NewBookingForm } from "./appointments/NewBookingForm";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
+import { CompletePaymentPanel } from "@/components/CompletePaymentPanel";
 import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -186,6 +187,7 @@ export default function MobileCalendar() {
 
   // ── Appointment detail + edit sheet ─────────────────────────────────────
   const [selectedAppt,    setSelectedAppt]    = useState<CalendarAppointment | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const [apptDetailOpen,  setApptDetailOpen]  = useState(false);
   const [apptEditOpen,    setApptEditOpen]    = useState(false);
   const [apptEditDate,    setApptEditDate]    = useState("");
@@ -1056,6 +1058,16 @@ export default function MobileCalendar() {
 
             {selectedAppt.status !== "cancelled" && (
               <button
+                onClick={() => setCompletingId(selectedAppt.id)}
+                className="w-full py-3.5 rounded-2xl border border-[#044e77] text-[#044e77] text-[14px] font-medium
+                           active:opacity-80 transition-opacity mb-2"
+              >
+                {selectedAppt.status === "completed" ? "Payment" : "Complete"}
+              </button>
+            )}
+
+            {selectedAppt.status !== "cancelled" && (
+              <button
                 onClick={() => openApptEdit(selectedAppt)}
                 className="w-full py-3.5 rounded-2xl bg-[#044e77] text-white text-[14px] font-medium
                            active:opacity-80 transition-opacity"
@@ -1584,6 +1596,18 @@ export default function MobileCalendar() {
         )}
       </div>
 
+      {completingId && (
+        <CompletePaymentPanel
+          appointmentId={completingId}
+          onClose={() => setCompletingId(null)}
+          onDone={() => {
+            setCompletingId(null);
+            setApptDetailOpen(false);
+            setSelectedAppt(null);
+            fetchDay(selectedDate);
+          }}
+        />
+      )}
     </div>
   );
 }

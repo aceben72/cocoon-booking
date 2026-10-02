@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   computeAppointmentLoyalty,
   computeLoyaltyStatus,
+  isLoyaltyServiceDbId,
   type AppointmentLoyalty,
   type LoyaltyAppointment,
   type LoyaltyStatus,
@@ -145,4 +146,33 @@ export async function withAppointmentLoyalty<T extends { id: string; client_id: 
     console.error("[loyalty] admin appointment loyalty failed:", err);
   }
   return appointments.map((a) => ({ ...a, loyalty: map.get(a.id) ?? null }));
+}
+
+/**
+ * Loyalty reward for a booking that's about to be created (admin New Booking):
+ * judged exactly like an existing upcoming booking — completions as of now,
+ * and only if no earlier upcoming booking would take the reward first.
+ * Returns 0 for unknown clients or non-qualifying services.
+ */
+export async function getRewardForNewBooking(
+  db: SupabaseClient,
+  clientId: string | null,
+  serviceDbId: string,
+  startISO: string,
+  now: Date = new Date(),
+): Promise<number> {
+  if (!clientId || !isLoyaltyServiceDbId(serviceDbId)) return 0;
+  const data = (await loadClientLoyaltyData(db, [clientId])).get(clientId);
+  if (!data) return 0;
+  const candidate: LoyaltyAppointment = {
+    id: "__new__",
+    serviceId: serviceDbId,
+    startISO,
+    status: "confirmed",
+    loyaltyDiscountCents: 0,
+    paidViaPackage: false,
+  };
+  const l = computeAppointmentLoyalty([...data.appointments, candidate], { excluded: data.excluded, now, includeId: candidate.id })
+    .get(candidate.id);
+  return l?.kind === "due" ? l.amountCents : 0;
 }

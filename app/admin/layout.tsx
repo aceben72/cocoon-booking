@@ -22,6 +22,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <NavLink href="/admin/gift-cards">Gift Cards</NavLink>
               <NavLink href="/admin/facial-packages">Facial Packages</NavLink>
               <NavLink href="/admin/coupons">Coupons</NavLink>
+              <NavLink href="/admin/payments">Payments</NavLink>
+              <NavLink href="/admin/takings">Takings</NavLink>
             </nav>
           </div>
           <LogoutButton />

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
+import type { Service } from "@/types";
 
 const DEPOSIT_CENTS = 5000; // $50 — must match StepPayment
 
@@ -67,7 +69,8 @@ export function PaymentPage({
   clientLastName,
   clientEmail,
 }: Props) {
-  const hasDepositOption = !["brow-treatments", "led-light-treatments"].includes(serviceCategory);
+  // Same rule as online booking; never a deposit bigger than what's owed.
+  const hasDepositOption = serviceHasDepositOption({ category: serviceCategory as Service["category"] }) && priceCents > DEPOSIT_CENTS;
   const [paymentMode, setPaymentMode] = useState<"full" | "deposit">("full");
   const amountPaidCents = hasDepositOption && paymentMode === "deposit" ? DEPOSIT_CENTS : priceCents;
 

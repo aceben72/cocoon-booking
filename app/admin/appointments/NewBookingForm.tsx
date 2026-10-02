@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { SERVICES, CATEGORY_META } from "@/lib/services-data";
+import { formatPrice } from "@/lib/utils";
 
 interface ClientSuggestion {
   id: string;
@@ -46,10 +47,12 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   const [lastName, setLastName]     = useState("");
   const [email, setEmail]           = useState("");
   const [mobile, setMobile]         = useState("");
-  const [noCharge, setNoCharge]     = useState(false);
+  // pay_on_day: Amanda takes payment at the appointment (the everyday case).
+  const [mode, setMode]             = useState<"pay_on_day" | "payment_link" | "no_charge">("pay_on_day");
+  const [loyaltyRewardCents, setLoyaltyRewardCents] = useState(0);
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState<string | null>(null);
-  const [success, setSuccess]       = useState<{ name: string; paymentUrl?: string; noCharge?: boolean } | null>(null);
+  const [success, setSuccess]       = useState<{ name: string; paymentUrl?: string; mode: "pay_on_day" | "payment_link" | "no_charge" } | null>(null);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [conflictChecking, setConflictChecking] = useState(false);
 
@@ -166,17 +169,32 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
     return () => clearTimeout(timer);
   }, [date, time, serviceId, selectedService]);
 
+  // ── Loyalty preview ─────────────────────────────────────────────────────
+  useEffect(() => {
+    setLoyaltyRewardCents(0);
+    if (!email.includes("@") || !date || !time || !serviceId) return;
+    const timer = setTimeout(async () => {
+      try {
+        const qs = new URLSearchParams({ email, serviceId, date, time });
+        const res = await fetch(`/api/admin/loyalty-preview?${qs}`);
+        const d = await res.json() as { rewardCents?: number };
+        setLoyaltyRewardCents(d.rewardCents ?? 0);
+      } catch { /* preview only */ }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [email, serviceId, date, time]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSaving(true);
 
     try {
-      const effectiveNoCharge = noCharge || isAdminOnlyService;
+      const effectiveMode = isAdminOnlyService ? "no_charge" : mode;
       const res = await fetch("/api/admin/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceId, date, time, firstName, lastName, email, mobile, noCharge: effectiveNoCharge }),
+        body: JSON.stringify({ serviceId, date, time, firstName, lastName, email, mobile, mode: effectiveMode }),
       });
       const data = await res.json() as { error?: string; paymentUrl?: string; service?: string };
 
@@ -185,7 +203,7 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
         return;
       }
 
-      setSuccess({ name: `${firstName} ${lastName}`, paymentUrl: data.paymentUrl, noCharge: effectiveNoCharge });
+      setSuccess({ name: `${firstName} ${lastName}`, paymentUrl: data.paymentUrl, mode: effectiveMode });
       onCreated();
     } catch {
       setError("An unexpected error occurred");
@@ -201,9 +219,10 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
           <span className="text-emerald-500 text-xl mt-0.5">✓</span>
           <div className="flex-1">
             <p className="font-medium text-emerald-800 mb-1">Booking created for {success.name}</p>
-            {success.noCharge ? (
+            {success.mode !== "payment_link" ? (
               <p className="text-sm text-emerald-700">
                 Booking confirmed. A confirmation email and SMS have been sent.
+                {success.mode === "pay_on_day" && " Take payment at the appointment with Complete."}
               </p>
             ) : (
               <>
@@ -232,7 +251,7 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
         </div>
         <div className="flex gap-2 mt-4">
           <button
-            onClick={() => { setSuccess(null); setFirstName(""); setLastName(""); setEmail(""); setMobile(""); setNoCharge(false); }}
+            onClick={() => { setSuccess(null); setFirstName(""); setLastName(""); setEmail(""); setMobile(""); setMode("pay_on_day"); }}
             className="text-sm px-4 py-2 rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
             Create another
@@ -437,30 +456,52 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
         </div>
       )}
 
-      {/* No-charge toggle — only shown for normal (non-admin-only) services */}
+      {/* How it's paid — only for normal (non-admin-only) services */}
       {!isAdminOnlyService && (
-        <label className="mt-4 flex items-center gap-3 cursor-pointer select-none w-fit">
-          <div className="relative">
-            <input
-              type="checkbox"
-              className="sr-only peer"
-              checked={noCharge}
-              onChange={(e) => setNoCharge(e.target.checked)}
-            />
-            <div className="w-10 h-6 rounded-full bg-[#ddd8d2] peer-checked:bg-amber-400 transition-colors" />
-            <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+        <fieldset className="mt-4">
+          <legend className="text-xs font-medium text-[#7a6f68] mb-1.5">Payment</legend>
+          <div className="flex flex-wrap gap-2">
+            {([
+              ["pay_on_day", `Pay on the day${selectedService ? ` (${formatPrice(selectedService.price_cents)})` : ""}`],
+              ["payment_link", "Send payment link"],
+              ["no_charge", "No charge / internal"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMode(value)}
+                aria-pressed={mode === value}
+                className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
+                  mode === value
+                    ? value === "no_charge"
+                      ? "border-amber-400 bg-amber-50 text-amber-800"
+                      : "border-[#044e77] bg-[#044e77]/5 text-[#044e77] font-medium"
+                    : "border-[#ddd8d2] text-[#5a504a] hover:border-[#c0b4ab]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <span className="text-sm text-[#5a504a]">No charge / internal booking</span>
-        </label>
+        </fieldset>
       )}
 
-      {(noCharge || isAdminOnlyService) && (
+      {loyaltyRewardCents > 0 && !isAdminOnlyService && mode !== "no_charge" && (
+        <div className="mt-3 bg-amber-50 border border-amber-300 rounded-lg px-4 py-3 text-sm text-amber-900">
+          <strong>Loyalty reward due: {formatPrice(loyaltyRewardCents)} off</strong>
+          {mode === "payment_link"
+            ? " — taken off the payment link."
+            : " — applied when you Complete the appointment."}
+        </div>
+      )}
+
+      {(mode === "no_charge" || isAdminOnlyService) && (
         <div className="mt-3 flex items-start gap-2.5 bg-amber-50 border border-amber-300 rounded-lg px-4 py-3">
           <svg className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
           </svg>
           <p className="text-sm font-medium text-amber-800">
-            No payment will be collected — booking will be confirmed immediately.
+            Saved at $0 — only for genuinely free or internal bookings. For a client paying on the day, choose &ldquo;Pay on the day&rdquo;.
           </p>
         </div>
       )}
@@ -476,16 +517,18 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
           type="submit"
           disabled={saving}
           className={`px-5 py-2.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 transition-colors ${
-            noCharge || isAdminOnlyService
+            mode === "no_charge" || isAdminOnlyService
               ? "bg-amber-500 hover:bg-amber-600"
               : "bg-[#044e77] hover:bg-[#033d5c]"
           }`}
         >
           {saving
             ? "Creating…"
-            : noCharge || isAdminOnlyService
+            : mode === "no_charge" || isAdminOnlyService
             ? "Create booking (no charge)"
-            : "Create booking & send payment link"}
+            : mode === "payment_link"
+            ? "Create booking & send payment link"
+            : "Create booking"}
         </button>
         <button
           type="button"

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendAppointmentConfirmation, sendAdminBookingNotification } from "@/lib/notifications";
+import { hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
+import type { Service } from "@/types";
 
 const DEPOSIT_CENTS = 5000;
 
@@ -17,6 +19,8 @@ interface RawAppointment {
   start_datetime: string;
   status: string;
   amount_cents: number;
+  discount_cents: number;
+  loyalty_discount_cents: number;
   payment_link_token_expires_at: string;
   services: { name: string; category: string; duration_minutes: number } | null;
   clients: { first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean; notes: string | null } | null;
@@ -45,7 +49,7 @@ export async function POST(
   const { data: appt, error: apptErr } = await db
     .from("appointments")
     .select(`
-      id, client_id, start_datetime, status, amount_cents, payment_link_token_expires_at,
+      id, client_id, start_datetime, status, amount_cents, discount_cents, loyalty_discount_cents, payment_link_token_expires_at,
       services ( name, category, duration_minutes ),
       clients ( first_name, last_name, email, mobile, is_new_client, notes )
     `)
@@ -67,9 +71,10 @@ export async function POST(
   }
 
   // Validate amountPaidCents against deposit rules
+  // Owed = price less any coupon / loyalty reward applied when Amanda booked it.
   const category = appointment.services?.category ?? "";
-  const priceCents = appointment.amount_cents;
-  const hasDepositOption = !["brow-treatments", "led-light-treatments"].includes(category);
+  const priceCents = appointment.amount_cents - (appointment.discount_cents ?? 0) - (appointment.loyalty_discount_cents ?? 0);
+  const hasDepositOption = serviceHasDepositOption({ category: category as Service["category"] }) && priceCents > DEPOSIT_CENTS;
 
   let amountPaidCents: number;
   if (hasDepositOption && typeof rawAmount === "number" && rawAmount === DEPOSIT_CENTS) {
@@ -116,7 +121,6 @@ export async function POST(
     .update({
       status: "confirmed",
       square_payment_id: squarePaymentId,
-      amount_paid_cents: amountPaidCents,
       payment_link_token: null,
       payment_link_token_expires_at: null,
     })
@@ -125,6 +129,23 @@ export async function POST(
   if (updateErr) {
     console.error("[pay/token] update failed:", updateErr);
     return NextResponse.json({ error: "Failed to confirm booking" }, { status: 500 });
+  }
+
+  // Record the payment — the trigger sets amount_paid_cents from it.
+  if (amountPaidCents > 0) {
+    const { error: payErr } = await db.from("appointment_payments").insert({
+      appointment_id: appointment.id,
+      amount_cents: amountPaidCents,
+      method: "card_square",
+      square_payment_id: squarePaymentId,
+      recorded_by: "payment_link",
+      notes: amountPaidCents === DEPOSIT_CENTS && hasDepositOption ? "Payment link — deposit" : "Payment link",
+    });
+    if (payErr) {
+      // Charge went through — keep the amount visible even without the row.
+      console.error("[pay/token] PAYMENT ROW INSERT FAILED — add manually:", appointment.id, amountPaidCents, payErr);
+      await db.from("appointments").update({ amount_paid_cents: amountPaidCents }).eq("id", appointment.id);
+    }
   }
 
   // ── Clear is_new_client if this is not their first confirmed appointment ──

@@ -4,6 +4,7 @@ import React, { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { NewBookingForm } from "./NewBookingForm";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
+import { CompletePaymentPanel } from "@/components/CompletePaymentPanel";
 import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ interface Appointment {
   amount_paid_cents: number;
   discount_cents?: number;
   loyalty_discount_cents?: number;
+  cash_discount_cents?: number;
   square_payment_id: string | null;
   payment_link_token: string | null;
   notes: string | null;
@@ -201,9 +203,9 @@ function formatPrice(cents: number) {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Still owed on the day at the card price: price − coupon − loyalty − paid. */
-function outstandingCents(appt: Pick<Appointment, "amount_cents" | "amount_paid_cents" | "discount_cents" | "loyalty_discount_cents">) {
-  return Math.max(0, appt.amount_cents - (appt.discount_cents ?? 0) - (appt.loyalty_discount_cents ?? 0) - appt.amount_paid_cents);
+/** Still owed: price − coupon − loyalty − cash/PayID discount − paid. */
+function outstandingCents(appt: Pick<Appointment, "amount_cents" | "amount_paid_cents" | "discount_cents" | "loyalty_discount_cents" | "cash_discount_cents">) {
+  return Math.max(0, appt.amount_cents - (appt.discount_cents ?? 0) - (appt.loyalty_discount_cents ?? 0) - (appt.cash_discount_cents ?? 0) - appt.amount_paid_cents);
 }
 
 function isoToAESTFields(iso: string): { date: string; time: string } {
@@ -1002,6 +1004,8 @@ export function AppointmentTable({
     }
   }
 
+  const [completingId, setCompletingId] = useState<string | null>(null);
+
   async function updateStatus(id: string, status: string, expectedStatus?: string) {
     setUpdatingId(id);
     const res = await fetch(`/api/admin/appointments/${id}`, {
@@ -1483,7 +1487,7 @@ export function AppointmentTable({
                             <>
                               <button
                                 disabled={updatingId === appt.id}
-                                onClick={() => updateStatus(appt.id, "completed")}
+                                onClick={() => setCompletingId(appt.id)}
                                 className="text-xs px-2.5 py-1 rounded border border-blue-200 text-blue-700
                                            hover:bg-blue-50 transition-colors disabled:opacity-50"
                               >
@@ -1503,6 +1507,15 @@ export function AppointmentTable({
                               </button>
                             </>
                           )}
+                          {appt.status === "completed" && outstandingCents(appt) > 0 && appt.facial_package_redemptions.length === 0 && (
+                            <button
+                              onClick={() => setCompletingId(appt.id)}
+                              className="text-xs px-2.5 py-1 rounded border border-amber-300 text-amber-800
+                                         hover:bg-amber-50 transition-colors"
+                            >
+                              Record payment
+                            </button>
+                          )}
                           {appt.status === "cancelled" && (
                             <button
                               disabled={updatingId === appt.id}
@@ -1517,11 +1530,7 @@ export function AppointmentTable({
                             <>
                               <button
                                 disabled={updatingId === appt.id}
-                                onClick={() => {
-                                  if (confirm("Deposit for this appointment was never paid — mark complete anyway?")) {
-                                    updateStatus(appt.id, "completed", "pending_payment");
-                                  }
-                                }}
+                                onClick={() => setCompletingId(appt.id)}
                                 className="text-xs px-2.5 py-1 rounded border border-blue-200 text-blue-700
                                            hover:bg-blue-50 transition-colors disabled:opacity-50"
                               >
@@ -1677,6 +1686,17 @@ export function AppointmentTable({
         </div>
         );
       })()}
+
+      {completingId && (
+        <CompletePaymentPanel
+          appointmentId={completingId}
+          onClose={() => setCompletingId(null)}
+          onDone={() => {
+            setCompletingId(null);
+            startTransition(() => router.refresh());
+          }}
+        />
+      )}
     </div>
   );
 }

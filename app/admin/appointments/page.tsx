@@ -26,6 +26,7 @@ interface RawAppointment {
   amount_paid_cents: number;
   discount_cents: number;
   loyalty_discount_cents: number;
+  cash_discount_cents: number;
   square_payment_id: string | null;
   payment_link_token: string | null;
   notes: string | null;
@@ -77,7 +78,7 @@ async function getAppointments(status: string, from: string, to: string): Promis
   let query = supabase()
     .from("appointments")
     .select(`
-      id, client_id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents, discount_cents, loyalty_discount_cents,
+      id, client_id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents, discount_cents, loyalty_discount_cents, cash_discount_cents,
       square_payment_id, payment_link_token, notes, created_at,
       services ( name, category, duration_minutes, padding_minutes ),
       clients ( first_name, last_name, email, mobile, is_new_client ),

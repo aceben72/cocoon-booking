@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import BookingProgress from "@/components/BookingProgress";
 import { CATEGORY_META } from "@/lib/services-data";
+import { LOYALTY_OFFER_TEXT, LOYALTY_SMALL_PRINT } from "@/lib/loyalty-rules";
 import DeepLinkGate from "./DeepLinkGate";
 
 export const dynamic = "force-dynamic";
@@ -101,23 +102,26 @@ export default function SelectCategoryPage() {
             </span>
           </Link>
 
-          {/* Facial Packages — redirect to /facial-packages */}
+          {/* Loyalty reward — replaced Facial Packages (no longer sold) */}
           <Link
-            href="/facial-packages"
+            href="/book/facials"
             className="group bg-white rounded-2xl border border-[#e8e0d8] p-7 flex flex-col gap-3
                        hover:border-[#fbb040] hover:shadow-md transition-all duration-200"
           >
             <div className="text-[#fbb040] text-2xl">✨</div>
             <h2 className="font-[family-name:var(--font-cormorant)] text-2xl font-medium italic text-[#044e77]
                            group-hover:text-[#033d5c] transition-colors">
-              Facial Packages
+              Facial Loyalty Reward
             </h2>
             <p className="text-sm text-[#7a6f68] font-light leading-relaxed">
-              Purchase a package of four facial appointments and save — choose Indulge or Opulence.
+              {LOYALTY_OFFER_TEXT}
+            </p>
+            <p className="text-xs text-[#9a8f87] font-light leading-relaxed">
+              {LOYALTY_SMALL_PRINT}
             </p>
             <span className="mt-auto inline-flex items-center gap-1 text-sm text-[#044e77] font-medium
                              group-hover:gap-2 transition-all">
-              Purchase a package
+              Book a facial
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>

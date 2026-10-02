@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getAppointmentLoyaltyMap, getLoyaltyStatus, LOYALTY_FACIALS_REQUIRED, type AppointmentLoyalty, type LoyaltyStatus } from "@/lib/loyalty";
+import { LoyaltyBadge } from "@/components/LoyaltyBadge";
+import { LoyaltyToggle } from "./LoyaltyToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +15,13 @@ function supabase() {
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
+
+/** "YYYY-MM-DD" (Brisbane date) → "2 October 2026" */
+function formatDay(date: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-AU", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })
+    .format(new Date(Date.UTC(y, m - 1, d)));
+}
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
@@ -78,6 +88,7 @@ interface RawAppointment {
   amount_cents: number;
   amount_paid_cents: number;
   discount_cents: number;
+  loyalty_discount_cents: number;
   notes: string | null;
   services: { name: string; duration_minutes: number } | null;
   gift_cards: { code: string } | null;
@@ -114,7 +125,7 @@ export default async function ClientDetailPage({
   const [clientRes, apptsRes, classBookingsRes, intakeRes] = await Promise.all([
     supabase()
       .from("clients")
-      .select("id, first_name, last_name, email, mobile, is_new_client, notes, created_at")
+      .select("id, first_name, last_name, email, mobile, is_new_client, notes, created_at, exclude_from_loyalty")
       .eq("id", id)
       .single(),
 
@@ -122,7 +133,7 @@ export default async function ClientDetailPage({
       .from("appointments")
       .select(`
         id, start_datetime, status,
-        amount_cents, amount_paid_cents, discount_cents, notes,
+        amount_cents, amount_paid_cents, discount_cents, loyalty_discount_cents, notes,
         services ( name, duration_minutes ),
         gift_cards ( code ),
         coupons ( code )
@@ -154,6 +165,19 @@ export default async function ClientDetailPage({
   const appts      = (apptsRes.data ?? []) as unknown as RawAppointment[];
   const classBks   = (classBookingsRes.data ?? []) as unknown as RawClassBooking[];
   const intakeForm = intakeRes.data as { id: string; status: string; submitted_at: string | null } | null;
+
+  let loyalty: LoyaltyStatus | null = null;
+  let apptLoyalty = new Map<string, AppointmentLoyalty>();
+  try {
+    [loyalty, apptLoyalty] = await Promise.all([
+      getLoyaltyStatus(supabase(), id),
+      getAppointmentLoyaltyMap(supabase(), [id]),
+    ]);
+  } catch (err) {
+    console.error("[admin/clients] loyalty status failed:", err);
+  }
+  const upcomingRewardISO =
+    loyalty?.lastRewardISO && new Date(loyalty.lastRewardISO) > new Date() ? loyalty.lastRewardISO : null;
 
   // ── Compute summary stats (completed appointments only) ───────────────────
   const completedAppts = appts.filter((a) => a.status === "completed");
@@ -244,6 +268,41 @@ export default async function ClientDetailPage({
         <StatCard label="Total Spent"  value={formatMoney(totalSpent)} />
         <StatCard label="First Visit"  value={formatDate(firstVisit)} />
         <StatCard label="Last Visit"   value={formatDate(lastVisit)} />
+      </div>
+
+      {/* ── Facial loyalty ─────────────────────────────────────────────────── */}
+      <div className="bg-white border border-[#e8e0d8] rounded-xl px-6 py-5 mb-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap mb-2">
+          <h2 className="font-[family-name:var(--font-cormorant)] italic text-[#044e77] text-xl">
+            Facial Loyalty
+          </h2>
+          <LoyaltyToggle clientId={client.id} excluded={!!client.exclude_from_loyalty} />
+        </div>
+        {!loyalty ? (
+          <p className="text-sm text-[#7a6f68]">Loyalty status unavailable.</p>
+        ) : loyalty.excluded ? (
+          <p className="text-sm text-[#7a6f68]">No count shown and no reward while excluded.</p>
+        ) : (
+            <div className="text-sm text-[#5a504a] space-y-1">
+              <p>
+                <span className="font-medium text-[#1a1a1a]">
+                  {loyalty.count} of {LOYALTY_FACIALS_REQUIRED}
+                </span>{" "}
+                completed Indulge / Opulence / Lifting Code facials
+                {loyalty.windowStart && <> since {formatDay(loyalty.windowStart)}</>}
+              </p>
+              {loyalty.rewardDue ? (
+                <p className="text-emerald-700 font-medium">
+                  $50 off their next qualifying facial — book by {formatDay(loyalty.completeBy!)}
+                </p>
+              ) : loyalty.completeBy ? (
+                <p className="text-[#7a6f68]">4th facial must be by {formatDay(loyalty.completeBy)} to get the reward</p>
+              ) : null}
+              {upcomingRewardISO && (
+                <p className="text-[#7a6f68]">Reward booked for {formatDate(upcomingRewardISO)} — count restarts after it.</p>
+              )}
+            </div>
+        )}
       </div>
 
       {/* ── Intake Form ────────────────────────────────────────────────────── */}
@@ -368,6 +427,7 @@ export default async function ClientDetailPage({
                       </td>
                       <td className="px-4 py-3 text-[#1a1a1a]">
                         {appt.services?.name ?? "—"}
+                        <LoyaltyBadge loyalty={apptLoyalty.get(appt.id)} className="block w-fit mt-1" />
                       </td>
                       <td className="px-4 py-3 text-[#7a6f68] hidden md:table-cell">
                         {appt.services ? `${appt.services.duration_minutes} min` : "—"}
@@ -377,6 +437,11 @@ export default async function ClientDetailPage({
                         {appt.discount_cents > 0 && (
                           <div className="text-[10px] text-emerald-700 whitespace-nowrap">
                             -{formatMoney(appt.discount_cents)} discount
+                          </div>
+                        )}
+                        {appt.loyalty_discount_cents > 0 && (
+                          <div className="text-[10px] text-emerald-700 whitespace-nowrap">
+                            -{formatMoney(appt.loyalty_discount_cents)} loyalty
                           </div>
                         )}
                       </td>

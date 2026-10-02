@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { parseAESTDate } from "@/lib/utils";
+import { withAppointmentLoyalty } from "@/lib/loyalty";
 
 function supabase() {
   return createClient(
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   let query = supabase()
     .from("appointments")
     .select(`
-      id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents,
+      id, client_id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents, discount_cents, loyalty_discount_cents,
       square_payment_id, notes, created_at,
       services ( name, category, duration_minutes, padding_minutes ),
       clients ( first_name, last_name, email, mobile, is_new_client ),
@@ -36,5 +37,5 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  return NextResponse.json(await withAppointmentLoyalty(supabase(), (data ?? []) as { id: string; client_id: string }[]));
 }

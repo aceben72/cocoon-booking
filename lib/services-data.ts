@@ -50,7 +50,7 @@ export const SERVICES: Service[] = [
   { id: "lifting-code-facial", category: "facials", name: "Lifting Code Facial", duration_minutes: 90, padding_minutes: 30, price_cents: 24700, cash_price_cents: 23900, active: true },
 
   // LED Light Treatments
-  { id: "basic-led", category: "led-light-treatments", name: "Basic LED Treatment", duration_minutes: 35, padding_minutes: 30, price_cents: 4700, cash_price_cents: 4500, active: true },
+  { id: "basic-led", category: "led-light-treatments", name: "Basic LED Treatment", duration_minutes: 35, padding_minutes: 30, price_cents: 4700, cash_price_cents: null, active: true },
   { id: "deluxe-led", category: "led-light-treatments", name: "Deluxe LED Treatment", duration_minutes: 40, padding_minutes: 30, price_cents: 6100, cash_price_cents: 5900, active: true },
 
   // Make-Up

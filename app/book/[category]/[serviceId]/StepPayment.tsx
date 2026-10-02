@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import type { Service, ClientDetailsForm } from "@/types";
 import { formatPrice, formatDuration, formatTime, serviceCashSavingText, serviceCashSavingCents, hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
+import { computeBookingPricing } from "@/lib/booking-pricing";
+import { isLoyaltyServiceSlug } from "@/lib/loyalty-rules";
 
 interface BookingResult {
   appointmentId: string;
@@ -10,6 +12,8 @@ interface BookingResult {
   startISO: string;
   amountCents: number;
   amountPaidCents: number;
+  discountCents?: number;
+  loyaltyDiscountCents?: number;
   paidViaFacialPackage?: boolean;
   isNewClient?: boolean;
   client: { first_name: string; last_name: string; email: string };
@@ -89,43 +93,48 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
     expires_at: string;
   } | null>(null);
 
-  // ── Price calculation ─────────────────────────────────────────
-  const baseAmountCents = hasDepositOption && paymentMode === "deposit"
-    ? DEPOSIT_CENTS
-    : service.price_cents;
+  // ── Loyalty reward ($50 off the 4th qualifying facial) ────────
+  // Checked against the client's email and the appointment date; the booking
+  // API re-checks before charging.
+  const [loyaltyRewardCents, setLoyaltyRewardCents] = useState(0);
+  useEffect(() => {
+    if (!isLoyaltyServiceSlug(service.id) || !client.email) return;
+    let cancelled = false;
+    fetch("/api/loyalty", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: client.email, serviceId: service.id, date, time }),
+    })
+      .then((res) => res.json())
+      .then((data) => { if (!cancelled) setLoyaltyRewardCents(data.rewardCents ?? 0); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [service.id, client.email, date, time]);
 
+  // ── Price calculation (shared with POST /api/bookings) ─────────
   // Facial package covers the full amount (trumps all other discounts)
   const facialPackageCoversAll = appliedFacialPackage !== null;
+  const pricingFor = (payDeposit: boolean) => computeBookingPricing({
+    priceCents: service.price_cents,
+    payDeposit,
+    depositCents: DEPOSIT_CENTS,
+    couponDiscountCents: appliedCoupon?.discountCents ?? 0,
+    loyaltyDiscountCents: loyaltyRewardCents,
+    giftCardBalanceCents: appliedGiftCard?.remaining_value_cents ?? 0,
+    paidViaFacialPackage: facialPackageCoversAll,
+  });
+  const pricing = pricingFor(hasDepositOption && paymentMode === "deposit");
+  const couponDiscountCents = pricing.couponDiscountCents;
+  const loyaltyDiscountCents = pricing.loyaltyDiscountCents;
+  const giftCardApplied = pricing.giftCardAppliedCents;
+  const amountPaidCents = pricing.chargeNowCents;
 
-  // Coupon discount applies to the service total (not deposit)
-  const couponDiscountCents = !facialPackageCoversAll ? (appliedCoupon?.discountCents ?? 0) : 0;
-  // Gift card covers what's left after coupon
-  const afterCoupon = Math.max(0, service.price_cents - couponDiscountCents);
-  const giftCardApplied = (!facialPackageCoversAll && appliedGiftCard)
-    ? Math.min(appliedGiftCard.remaining_value_cents, afterCoupon)
-    : 0;
-
-  // Amount to charge to card: baseAmount - coupon - gift card (but at least 0)
-  let amountPaidCents: number;
-  if (facialPackageCoversAll) {
-    amountPaidCents = 0;
-  } else if (paymentMode === "deposit") {
-    // For deposit mode: discount from deposit amount only
-    amountPaidCents = Math.max(0, DEPOSIT_CENTS - couponDiscountCents - giftCardApplied);
-  } else {
-    amountPaidCents = Math.max(0, service.price_cents - couponDiscountCents - giftCardApplied);
-  }
-
-  // Remainder due on the day if the client picks the deposit option, worked
-  // out from the amounts after any coupon/gift card applied on this screen —
-  // shown on the deposit option before they choose, so independent of paymentMode.
-  const depositOptionPaidCents = Math.max(0, DEPOSIT_CENTS - couponDiscountCents - giftCardApplied);
-  const depositCardRemainderCents = facialPackageCoversAll
-    ? 0
-    : Math.max(0, service.price_cents - couponDiscountCents - giftCardApplied - depositOptionPaidCents);
+  // Remainder due on the day if the client picks the deposit option — shown
+  // on the deposit option before they choose, so independent of paymentMode.
+  const depositCardRemainderCents = pricingFor(true).balanceDueCents;
   const cashSavingCents = serviceCashSavingCents(service);
   const depositRemainderText = hasDepositOption && cashSavingCents > 0 && depositCardRemainderCents > 0
-    ? `Remainder ${formatPrice(depositCardRemainderCents)} on the day, or ${formatPrice(Math.max(0, depositCardRemainderCents - cashSavingCents))} if you pay by cash, PayID or bank transfer`
+    ? `Remainder ${formatPrice(depositCardRemainderCents)} on the day, or ${formatPrice(Math.max(0, depositCardRemainderCents - cashSavingCents))} with cash, PayID or direct deposit`
     : null;
 
   // Square requires minimum 50 cents — if discounts cover everything, we do $0 payment (no card needed)
@@ -326,7 +335,9 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
           time,
           client,
           squarePaymentToken,
+          paymentMode: hasDepositOption ? paymentMode : "full",
           amountPaidCents,
+          loyaltyRewardCents: loyaltyDiscountCents,
           giftCardCode: appliedGiftCard?.code ?? null,
           couponCode: appliedCoupon?.code ?? null,
           facialPackageCode: appliedFacialPackage?.code ?? null,
@@ -389,7 +400,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
           )}
           <div className="pt-3 border-t border-[#f0ebe4] space-y-1.5">
             {/* Service total */}
-            {(couponDiscountCents > 0 || giftCardApplied > 0) && (
+            {(couponDiscountCents > 0 || loyaltyDiscountCents > 0 || giftCardApplied > 0) && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[#9a8f87] font-light">Service total</span>
                 <span className="text-[#1a1a1a] font-light">{formatPrice(service.price_cents)}</span>
@@ -402,6 +413,13 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
                   Discount ({appliedCoupon.label})
                 </span>
                 <span className="text-emerald-700 font-light">−{formatPrice(couponDiscountCents)}</span>
+              </div>
+            )}
+            {/* Loyalty reward line */}
+            {loyaltyDiscountCents > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-emerald-700 font-light">Loyalty reward (4th facial)</span>
+                <span className="text-emerald-700 font-light">−{formatPrice(loyaltyDiscountCents)}</span>
               </div>
             )}
             {/* Gift card line */}
@@ -434,7 +452,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-[#9a8f87] font-light">Remaining at appointment</span>
                   <span className="text-[#9a8f87] font-light">
-                    {formatPrice(service.price_cents - couponDiscountCents - giftCardApplied - amountPaidCents)}
+                    {formatPrice(pricing.balanceDueCents)}
                   </span>
                 </div>
               </>
@@ -468,7 +486,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
               id="pay-full"
               selected={paymentMode === "full"}
               onClick={() => setPaymentMode("full")}
-              title={`Pay in full — ${formatPrice(service.price_cents)} today`}
+              title={`Pay in full — ${formatPrice(service.price_cents - couponDiscountCents - loyaltyDiscountCents)} today`}
             />
             <PaymentOption
               id="pay-deposit"

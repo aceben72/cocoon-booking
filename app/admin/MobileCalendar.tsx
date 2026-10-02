@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { NewBookingForm } from "./appointments/NewBookingForm";
+import { LoyaltyBadge } from "@/components/LoyaltyBadge";
+import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -13,6 +15,7 @@ interface CalendarAppointment {
   notes: string | null;
   services: { name: string; category: string; duration_minutes: number; padding_minutes: number } | null;
   clients: { first_name: string; last_name: string; is_new_client?: boolean } | null;
+  loyalty?: AppointmentLoyalty | null;
 }
 
 interface CalendarBlockedPeriod {
@@ -738,7 +741,10 @@ export default function MobileCalendar() {
                   className={`absolute rounded-lg border-l-4 z-10 px-2 py-1 overflow-hidden text-left
                     w-[calc(100%-8px)] ${apptColors(appt.status)} active:opacity-70 transition-opacity`}
                 >
-                  <p className="text-[11px] font-semibold leading-tight truncate">{name}</p>
+                  <p className="text-[11px] font-semibold leading-tight truncate">
+                    {appt.loyalty?.kind === "due" && <span title="Loyalty reward due">★ </span>}
+                    {name}
+                  </p>
                   {h >= 38 && appt.services && (
                     <p className="text-[10px] leading-tight truncate opacity-80 mt-0.5">
                       {appt.services.name}
@@ -1014,6 +1020,7 @@ export default function MobileCalendar() {
                   )}
                 </div>
                 <p className="text-xs text-[#9a8f87]">{selectedAppt.services?.name ?? "—"}</p>
+                <LoyaltyBadge loyalty={selectedAppt.loyalty} className="mt-1" />
                 {selectedAppt.clients?.is_new_client && (
                   <p className="text-xs text-[#7a6f68] mt-0.5 italic">+15 min consultation allocated</p>
                 )}

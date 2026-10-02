@@ -58,21 +58,28 @@ export async function GET(
 }
 
 // PATCH /api/admin/clients/[id]
-// Updates the client's notes.
+// Updates the client's notes and/or loyalty exclusion — only the fields sent.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const body = await req.json() as { notes?: string | null };
+  const body = await req.json().catch(() => ({})) as { notes?: string | null; exclude_from_loyalty?: boolean };
+
+  const update: { notes?: string | null; exclude_from_loyalty?: boolean } = {};
+  if ("notes" in body) update.notes = body.notes ?? null;
+  if (typeof body.exclude_from_loyalty === "boolean") update.exclude_from_loyalty = body.exclude_from_loyalty;
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
 
   const { error } = await supabase()
     .from("clients")
-    .update({ notes: body.notes ?? null })
+    .update(update)
     .eq("id", id);
 
   if (error) {
-    return NextResponse.json({ error: "Failed to update notes" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to update client" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });

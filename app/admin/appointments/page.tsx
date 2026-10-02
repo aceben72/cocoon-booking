@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { AppointmentTable } from "./AppointmentTable";
 import { parseAESTDate } from "@/lib/utils";
+import { withAppointmentLoyalty, type AppointmentLoyalty } from "@/lib/loyalty";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +18,14 @@ function supabase() {
 
 interface RawAppointment {
   id: string;
+  client_id: string;
   start_datetime: string;
   end_datetime: string;
   status: string;
   amount_cents: number;
   amount_paid_cents: number;
+  discount_cents: number;
+  loyalty_discount_cents: number;
   square_payment_id: string | null;
   payment_link_token: string | null;
   notes: string | null;
@@ -36,6 +40,7 @@ interface RawAppointment {
   } | null;
   intake_forms: { id: string; status: string; token: string }[];
   facial_package_redemptions: { id: string }[];
+  loyalty: AppointmentLoyalty | null;
 }
 
 export interface RawBlockedPeriod {
@@ -72,7 +77,7 @@ async function getAppointments(status: string, from: string, to: string): Promis
   let query = supabase()
     .from("appointments")
     .select(`
-      id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents,
+      id, client_id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents, discount_cents, loyalty_discount_cents,
       square_payment_id, payment_link_token, notes, created_at,
       services ( name, category, duration_minutes, padding_minutes ),
       clients ( first_name, last_name, email, mobile, is_new_client ),
@@ -91,7 +96,7 @@ async function getAppointments(status: string, from: string, to: string): Promis
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as unknown as RawAppointment[];
+  return withAppointmentLoyalty(supabase(), (data ?? []) as unknown as Omit<RawAppointment, "loyalty">[]);
 }
 
 async function getBlockedPeriods(from: string, to: string): Promise<RawBlockedPeriod[]> {

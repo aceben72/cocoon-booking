@@ -7,6 +7,8 @@ import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
 import { sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
 import { hasBookingConflict } from "@/lib/booking-conflicts";
+import { computeBookingPricing } from "@/lib/booking-pricing";
+import { getLoyaltyStatusByEmail, isLoyaltyServiceSlug, LOYALTY_REWARD_CENTS } from "@/lib/loyalty";
 import type { ClientDetailsForm, Service } from "@/types";
 
 interface BookingRequest {
@@ -15,10 +17,12 @@ interface BookingRequest {
   time: string;             // HH:MM AEST
   client: ClientDetailsForm;
   squarePaymentToken: string;
-  amountPaidCents?: number; // deposit or full; defaults to full price
+  paymentMode?: "full" | "deposit";
+  amountPaidCents?: number; // legacy deposit signal, used when paymentMode is absent
   giftCardCode?: string | null;
   couponCode?: string | null;
   facialPackageCode?: string | null;
+  loyaltyRewardCents?: number; // reward the client was shown; rejected if the server disagrees
 }
 
 export async function POST(request: NextRequest) {
@@ -35,10 +39,12 @@ export async function POST(request: NextRequest) {
     time,
     client,
     squarePaymentToken,
+    paymentMode,
     amountPaidCents: rawAmountPaid,
     giftCardCode,
     couponCode,
     facialPackageCode,
+    loyaltyRewardCents: shownLoyaltyCents,
   } = body;
 
   // Validate required fields
@@ -146,7 +152,7 @@ export async function POST(request: NextRequest) {
   }
 
   let giftCardId: string | null = null;
-  let giftCardAppliedCents = 0;
+  let giftCardBalanceCents = 0;
 
   if (!facialPackagePaidInFull && giftCardCode) {
     const gcResult = await validateGiftCard(giftCardCode);
@@ -154,37 +160,56 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Gift card: ${gcResult.error}` }, { status: 400 });
     }
     giftCardId = gcResult.giftCard.id;
-    const afterCoupon = Math.max(0, service.price_cents - couponDiscountCents);
-    giftCardAppliedCents = Math.min(gcResult.giftCard.remaining_value_cents, afterCoupon);
+    giftCardBalanceCents = gcResult.giftCard.remaining_value_cents;
   }
 
-  // Only the coupon is a genuine discount (reduces the price). A gift card is
-  // a payment method, not a discount — its value must be reflected in
-  // amount_paid_cents below, not netted out of the price.
-  const totalDiscountCents = couponDiscountCents;
+  // ── Loyalty reward ($50 off the 4th qualifying facial) ───────────────
+  // Worked out as at the appointment date. Not combined with a package redemption.
+  let loyaltyDueCents = 0;
+  if (!facialPackagePaidInFull && isLoyaltyServiceSlug(serviceId)) {
+    try {
+      const loyalty = await getLoyaltyStatusByEmail(supabase, client.email, startISO);
+      if (loyalty?.rewardDue) loyaltyDueCents = LOYALTY_REWARD_CENTS;
+    } catch (err) {
+      console.error("[bookings] loyalty lookup failed:", err);
+    }
+  }
+  // Never charge more than the client was shown on the payment screen.
+  if ((shownLoyaltyCents ?? 0) > loyaltyDueCents) {
+    return NextResponse.json(
+      { error: "Your loyalty reward couldn't be confirmed for this booking. Please go back and try again, or contact Amanda." },
+      { status: 409 },
+    );
+  }
 
-  // Determine the amount still owed that needs to be charged via Square,
-  // after the coupon discount and any gift card value have been applied.
-  // The deposit amount is authoritative server-side — we only accept the
-  // client-signalled deposit if the configured DEPOSIT_CENTS matches.
-  // Any other client-supplied value is ignored and full payment is charged.
+  // Deposit or full payment. The deposit amount itself is authoritative
+  // server-side (service.deposit_cents). paymentMode is sent by current
+  // clients; older cached pages signal a deposit by sending exactly DEPOSIT_CENTS.
   const depositAllowed = hasDepositOption(service);
   const DEPOSIT_CENTS = service.deposit_cents ?? 5000; // $50 default, matches StepPayment
-  let amountToChargeCents: number;
+  const payDeposit = depositAllowed && (
+    paymentMode !== undefined
+      ? paymentMode === "deposit"
+      : typeof rawAmountPaid === "number" && rawAmountPaid === DEPOSIT_CENTS
+  );
 
-  if (facialPackagePaidInFull) {
-    amountToChargeCents = 0;
-  } else if (
-    depositAllowed &&
-    typeof rawAmountPaid === "number" &&
-    rawAmountPaid === DEPOSIT_CENTS
-  ) {
-    // Client chose deposit — amount must match configured deposit exactly
-    amountToChargeCents = Math.max(0, DEPOSIT_CENTS - couponDiscountCents - giftCardAppliedCents);
-  } else {
-    // Full payment (or rawAmountPaid didn't match configured deposit — default to full)
-    amountToChargeCents = Math.max(0, service.price_cents - couponDiscountCents - giftCardAppliedCents);
-  }
+  const pricing = computeBookingPricing({
+    priceCents: service.price_cents,
+    payDeposit,
+    depositCents: DEPOSIT_CENTS,
+    couponDiscountCents,
+    loyaltyDiscountCents: loyaltyDueCents,
+    giftCardBalanceCents,
+    paidViaFacialPackage: facialPackagePaidInFull,
+  });
+
+  // The coupon and loyalty reward are genuine discounts (recorded separately).
+  // A gift card is a payment method, not a discount — its value is reflected
+  // in amount_paid_cents below, not netted out of the price.
+  const totalDiscountCents = pricing.couponDiscountCents;
+  const loyaltyDiscountCents = pricing.loyaltyDiscountCents;
+  const giftCardAppliedCents = pricing.giftCardAppliedCents;
+  const amountToChargeCents = pricing.chargeNowCents;
 
   // ── Square payment ────────────────────────────────────────────────────
   let squarePaymentId: string | null = null;
@@ -291,6 +316,7 @@ export async function POST(request: NextRequest) {
       amount_cents: service.price_cents,
       amount_paid_cents: amountPaidCents,
       discount_cents: totalDiscountCents,
+      loyalty_discount_cents: loyaltyDiscountCents,
       coupon_id: couponId,
       gift_card_id: giftCardId,
     })
@@ -436,6 +462,7 @@ export async function POST(request: NextRequest) {
     startISO,
     amountPaidCents,
     discountCents: totalDiscountCents,
+    loyaltyDiscountCents,
     paidViaFacialPackage: facialPackagePaidInFull,
     isNewClient: !!client.is_new_client,
     notes: client.notes || null,
@@ -449,6 +476,7 @@ export async function POST(request: NextRequest) {
     amountCents: service.price_cents,
     amountPaidCents,
     discountCents: totalDiscountCents,
+    loyaltyDiscountCents,
     paidViaFacialPackage: facialPackagePaidInFull,
     isNewClient: !!client.is_new_client,
     client: {
@@ -466,12 +494,13 @@ async function sendConfirmationNotifications(params: {
   startISO: string;
   amountPaidCents: number;
   discountCents: number;
+  loyaltyDiscountCents: number;
   paidViaFacialPackage: boolean;
   isNewClient: boolean;
   notes?: string | null;
   intakeFormUrl: string | null;
 }) {
-  const { service, client, startISO, amountPaidCents, discountCents, paidViaFacialPackage, isNewClient, notes, intakeFormUrl } = params;
+  const { service, client, startISO, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, notes, intakeFormUrl } = params;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -497,7 +526,7 @@ async function sendConfirmationNotifications(params: {
     let emailHtml: string;
     try {
       console.log("[bookings] building email HTML");
-      emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, discountCents, paidViaFacialPackage, isNewClient, intakeFormUrl });
+      emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, intakeFormUrl });
       console.log("[bookings] email HTML built, length:", emailHtml.length);
     } catch (buildErr) {
       console.error("[bookings] buildConfirmationEmail threw:", buildErr);
@@ -577,18 +606,19 @@ function buildConfirmationEmail(params: {
   displayTime: string;
   amountPaidCents: number;
   discountCents: number;
+  loyaltyDiscountCents: number;
   paidViaFacialPackage: boolean;
   isNewClient: boolean;
   intakeFormUrl: string | null;
 }) {
-  const { client, service, displayDate, displayTime, amountPaidCents, discountCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
+  const { client, service, displayDate, displayTime, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
   const paidDisplay = paidViaFacialPackage
     ? "Paid via Facial Package"
     : amountPaidCents === 0
       ? "Covered by promotions"
       : `$${(amountPaidCents / 100).toFixed(0)}`;
   // Cash saving only applies to a balance still to be paid on the day.
-  const balanceOwing = !paidViaFacialPackage && amountPaidCents < service.price_cents - discountCents;
+  const balanceOwing = !paidViaFacialPackage && amountPaidCents < service.price_cents - discountCents - loyaltyDiscountCents;
   const cashSaving = balanceOwing ? serviceCashSavingText(service) : null;
   const duration = service.duration_minutes < 60
     ? `${service.duration_minutes} min`
@@ -651,6 +681,7 @@ function buildConfirmationEmail(params: {
                 <td>
                   <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Amount Paid</span><br>
                   <strong style="font-size:16px;color:#044e77;">${paidDisplay}</strong>
+                  ${loyaltyDiscountCents > 0 ? `<br><span style="font-size:13px;color:#2f7a55;">Loyalty reward applied: $${(loyaltyDiscountCents / 100).toFixed(0)} off this facial</span>` : ""}
                   ${cashSaving ? `<br><span style="font-size:13px;color:#7a6f68;">${cashSaving}</span>` : ""}
                 </td>
               </tr>

@@ -14,9 +14,10 @@ async function computeToken(password: string, secret: string): Promise<string> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Only guard /admin routes; leave /admin/login and /api/admin/login open
+  // Guard /admin pages and /api/admin routes; leave /admin/login and /api/admin/login open
+  const isAdminApi = pathname.startsWith("/api/admin");
   if (
-    pathname.startsWith("/admin") &&
+    (pathname.startsWith("/admin") || isAdminApi) &&
     pathname !== "/admin/login" &&
     !pathname.startsWith("/api/admin/login")
   ) {
@@ -27,6 +28,9 @@ export async function middleware(request: NextRequest) {
     );
 
     if (cookie !== expected) {
+      if (isAdminApi) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
       const loginUrl = new URL("/admin/login", request.url);
       loginUrl.searchParams.set("next", pathname);
       return NextResponse.redirect(loginUrl);

@@ -10,6 +10,8 @@ interface BookingResult {
   startISO: string;
   amountCents: number;
   amountPaidCents: number;
+  discountCents?: number;
+  loyaltyDiscountCents?: number;
   paidViaFacialPackage?: boolean;
   isNewClient?: boolean;
   client: { first_name: string; last_name: string; email: string };
@@ -20,9 +22,10 @@ interface Props {
 }
 
 export default function StepConfirmation({ result }: Props) {
-  const { service, startISO, amountCents, amountPaidCents, paidViaFacialPackage, client, isNewClient } = result;
+  const { service, startISO, amountCents, amountPaidCents, discountCents = 0, loyaltyDiscountCents = 0, paidViaFacialPackage, client, isNewClient } = result;
   // A facial package covers the full cost — never treat as outstanding balance
-  const hasOutstanding = !paidViaFacialPackage && amountPaidCents < amountCents;
+  const balanceCents = paidViaFacialPackage ? 0 : Math.max(0, amountCents - discountCents - loyaltyDiscountCents - amountPaidCents);
+  const hasOutstanding = balanceCents > 0;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -91,11 +94,17 @@ export default function StepConfirmation({ result }: Props) {
                 {paidViaFacialPackage ? "Covered ✓" : formatPrice(amountPaidCents)}
               </span>
             </div>
+            {loyaltyDiscountCents > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-emerald-700 font-light">Loyalty reward (4th facial)</span>
+                <span className="text-emerald-700 font-light">−{formatPrice(loyaltyDiscountCents)}</span>
+              </div>
+            )}
             {hasOutstanding && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[#9a8f87] font-light">Balance due at appointment</span>
                 <span className="text-[#9a8f87] font-light">
-                  {formatPrice(amountCents - amountPaidCents)}
+                  {formatPrice(balanceCents)}
                 </span>
               </div>
             )}
@@ -117,7 +126,7 @@ export default function StepConfirmation({ result }: Props) {
         {hasOutstanding && (
           <p>
             <strong className="text-[#5a504a] font-medium">Balance reminder:</strong>{" "}
-            The remaining {formatPrice(amountCents - amountPaidCents)} is payable at your appointment.
+            The remaining {formatPrice(balanceCents)} is payable at your appointment.
           </p>
         )}
         <p>

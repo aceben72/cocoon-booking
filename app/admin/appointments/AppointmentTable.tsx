@@ -3,6 +3,8 @@
 import React, { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { NewBookingForm } from "./NewBookingForm";
+import { LoyaltyBadge } from "@/components/LoyaltyBadge";
+import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,8 @@ interface Appointment {
   status: string;
   amount_cents: number;
   amount_paid_cents: number;
+  discount_cents?: number;
+  loyalty_discount_cents?: number;
   square_payment_id: string | null;
   payment_link_token: string | null;
   notes: string | null;
@@ -70,6 +74,7 @@ interface Appointment {
   } | null;
   intake_forms: { id: string; status: string; token: string }[];
   facial_package_redemptions: { id: string }[];
+  loyalty?: AppointmentLoyalty | null;
 }
 
 // Mirrors the extra buffer added at booking creation for new clients (app/api/bookings/route.ts)
@@ -195,6 +200,11 @@ function formatPrice(cents: number) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Still owed on the day at the card price: price − coupon − loyalty − paid. */
+function outstandingCents(appt: Pick<Appointment, "amount_cents" | "amount_paid_cents" | "discount_cents" | "loyalty_discount_cents">) {
+  return Math.max(0, appt.amount_cents - (appt.discount_cents ?? 0) - (appt.loyalty_discount_cents ?? 0) - appt.amount_paid_cents);
+}
 
 function isoToAESTFields(iso: string): { date: string; time: string } {
   const d = new Date(iso);
@@ -1424,6 +1434,7 @@ export function AppointmentTable({
                           )}
                         </div>
                         <div className="text-[#7a6f68] text-xs">{appt.services?.duration_minutes} min</div>
+                        <LoyaltyBadge loyalty={appt.loyalty} className="mt-1" />
                       </td>
                       <td className="px-4 py-3 text-[#1a1a1a] whitespace-nowrap">
                         {formatAEST(appt.start_datetime)}
@@ -1443,9 +1454,9 @@ export function AppointmentTable({
                         ) : (
                           <>
                             <div className="font-medium text-[#1a1a1a]">{formatPrice(appt.amount_paid_cents)}</div>
-                            {appt.amount_paid_cents < appt.amount_cents && (
+                            {outstandingCents(appt) > 0 && (
                               <div className="text-xs text-amber-600 font-medium whitespace-nowrap">
-                                {formatPrice(appt.amount_cents - appt.amount_paid_cents)} outstanding
+                                {formatPrice(outstandingCents(appt))} outstanding
                               </div>
                             )}
                           </>
@@ -1583,11 +1594,11 @@ export function AppointmentTable({
                                     <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Paid</div>
                                     <div>{formatPrice(appt.amount_paid_cents)}</div>
                                   </div>
-                                  {appt.amount_paid_cents < appt.amount_cents && (
+                                  {outstandingCents(appt) > 0 && (
                                     <div>
                                       <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Outstanding</div>
                                       <div className="text-amber-600 font-medium">
-                                        {formatPrice(appt.amount_cents - appt.amount_paid_cents)}
+                                        {formatPrice(outstandingCents(appt))}
                                       </div>
                                     </div>
                                   )}

@@ -15,7 +15,7 @@ export function formatPrice(cents: number): string {
 }
 
 /**
- * Saving for paying by cash, PayID or bank transfer instead of card, in whole
+ * Saving for paying by cash, PayID or direct deposit instead of card, in whole
  * dollars. Returns 0 when there's no cash price or it isn't lower.
  */
 export function cashSavingDollars(priceCents: number, cashPriceCents: number | null | undefined): number {
@@ -23,10 +23,10 @@ export function cashSavingDollars(priceCents: number, cashPriceCents: number | n
   return Math.round((priceCents - cashPriceCents) / 100);
 }
 
-/** "Save $X when you pay by cash, PayID or bank transfer", or null if no saving. */
+/** "Save $X with cash, PayID or direct deposit", or null if no saving. */
 export function cashSavingText(priceCents: number, cashPriceCents: number | null | undefined): string | null {
   const dollars = cashSavingDollars(priceCents, cashPriceCents);
-  return dollars > 0 ? `Save $${dollars} when you pay by cash, PayID or bank transfer` : null;
+  return dollars > 0 ? `Save $${dollars} with cash, PayID or direct deposit` : null;
 }
 
 /**
@@ -53,7 +53,7 @@ export function serviceCashSavingCents(service: Pick<Service, "category" | "pric
 }
 
 export const CASH_SAVING_NOTE =
-  "Pay by cash, PayID or bank transfer on the day and save the card fee — the discount is taken off at checkout.";
+  "Paying on the day? Save with cash, PayID or direct deposit — the discount is taken off at checkout.";
 
 /** Format duration in minutes to human string, e.g. 90 → "1 hr 30 min" */
 export function formatDuration(minutes: number): string {

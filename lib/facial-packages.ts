@@ -31,14 +31,6 @@ function supabase() {
   );
 }
 
-const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // omit I, O, 0, 1 for clarity
-
-export function generatePackageCode(): string {
-  const seg = () =>
-    Array.from({ length: 4 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join("");
-  return `FPKG-${seg()}-${seg()}-${seg()}`;
-}
-
 /**
  * Maps a service slug (from services-data.ts) to a package_type.
  * Returns null if the service does not have a corresponding package.
@@ -48,27 +40,6 @@ export function serviceSlugToPackageType(slug: string): "indulge" | "opulence" |
   if (slug === "opulence-facial") return "opulence";
   return null;
 }
-
-export const PACKAGE_META = {
-  indulge: {
-    label: "Indulge Facial Package",
-    serviceSlug: "indulge-facial",
-    serviceName: "Indulge Facial",
-    priceCents: 49900,
-    uses: 4,
-    bookingUrl:
-      "https://book.cocoonskinandbeauty.com.au/book?category=facials&service=indulge-facial",
-  },
-  opulence: {
-    label: "Opulence Facial Package",
-    serviceSlug: "opulence-facial",
-    serviceName: "Opulence Facial",
-    priceCents: 63500,
-    uses: 4,
-    bookingUrl:
-      "https://book.cocoonskinandbeauty.com.au/book?category=facials&service=opulence-facial",
-  },
-} as const;
 
 /**
  * Validates a facial package code server-side.

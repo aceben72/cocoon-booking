@@ -1,13 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
 export function LogoutButton() {
-  const router = useRouter();
-
   async function handleLogout() {
     await fetch("/api/admin/logout", { method: "POST" });
-    router.push("/admin/login");
+    // Full navigation (not router.push) so the admin layout remounts cleanly
+    // and no cached signed-in client state survives.
+    window.location.href = "/admin/login";
   }
 
   return (

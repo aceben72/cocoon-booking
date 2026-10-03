@@ -14,12 +14,14 @@ async function computeToken(password: string, secret: string): Promise<string> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Guard /admin pages and /api/admin routes; leave /admin/login and /api/admin/login open
+  // Guard /admin pages and /api/admin routes; leave login and logout open
+  // (logout must work with an expired cookie so it can clear it)
   const isAdminApi = pathname.startsWith("/api/admin");
   if (
     (pathname.startsWith("/admin") || isAdminApi) &&
     pathname !== "/admin/login" &&
-    !pathname.startsWith("/api/admin/login")
+    !pathname.startsWith("/api/admin/login") &&
+    !pathname.startsWith("/api/admin/logout")
   ) {
     const cookie = request.cookies.get(COOKIE_NAME)?.value;
     const expected = await computeToken(

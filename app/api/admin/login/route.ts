@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 
 const COOKIE_NAME = "cocoon_admin";
-const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 function computeToken(password: string, secret: string): string {
   return createHash("sha256")

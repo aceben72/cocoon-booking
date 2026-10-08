@@ -49,10 +49,6 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
     detailsDraft.current = draft;
   }, []);
 
-  // Known once she's ticked "first visit". From then on the date and time
-  // lists are sized with the new-client consultation time.
-  const isNewClient = clientDetails?.is_new_client ?? false;
-
   const handleDateSelect = useCallback((date: string) => {
     setSelectedDate(date);
     setSelectedTime(null);
@@ -67,32 +63,12 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
   }, []);
 
   // Back to the times for the same day (refetched on mount), keeping her details.
-  const backToTimes = useCallback((notice: string, details?: ClientDetailsForm) => {
-    if (details) setClientDetails(details);
+  const backToTimes = useCallback((notice: string) => {
     setError(null);
     setTimeNotice(notice);
     setSelectedTime(null);
     setStep(3);
   }, []);
-
-  const checkSlotFitsNewClient = useCallback(async (): Promise<boolean> => {
-    if (!selectedDate || !selectedTime) return true;
-    try {
-      const res = await fetch(`/api/availability?serviceId=${service.id}&date=${selectedDate}&newClient=1`);
-      const data = await res.json();
-      if (!res.ok || !Array.isArray(data.slots)) return true; // can't tell; the server re-checks
-      return (data.slots as string[]).includes(selectedTime);
-    } catch {
-      return true;
-    }
-  }, [service.id, selectedDate, selectedTime]);
-
-  const handleSlotDoesNotFit = useCallback((details: ClientDetailsForm) => {
-    backToTimes(
-      `Your first visit includes an extra 15 minutes for a consultation with Amanda, so ${selectedTime ? formatTime(selectedTime) : "that time"} no longer fits. Please choose another time. Your details are saved.`,
-      details,
-    );
-  }, [backToTimes, selectedTime]);
 
   const handleSlotUnavailable = useCallback(() => {
     backToTimes(
@@ -191,7 +167,6 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
           <StepDate
             service={service}
             onSelect={handleDateSelect}
-            isNewClient={isNewClient}
           />
         )}
 
@@ -201,7 +176,6 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
             date={selectedDate}
             onSelect={handleTimeSelect}
             onBack={() => setStep(2)}
-            isNewClient={isNewClient}
             notice={timeNotice}
           />
         )}
@@ -214,9 +188,6 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
               setStep(3);
             }}
             initial={clientDetails}
-            checkSlotFitsNewClient={checkSlotFitsNewClient}
-            onSlotDoesNotFit={handleSlotDoesNotFit}
-            selectedTimeLabel={selectedTime ? formatTime(selectedTime) : undefined}
             onDraftChange={handleDetailsDraft}
           />
         )}

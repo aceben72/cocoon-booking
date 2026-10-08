@@ -7,7 +7,6 @@ import { fetchTimeList, hasConflict, type BusyQueryOptions, type ServiceLookup }
 export {
   BLOCKING_APPOINTMENT_STATUSES,
   CLASS_PADDING_MINUTES,
-  NEW_CLIENT_EXTRA_PADDING_MINUTES,
   SlotCheckError,
   bookingLengthMinutes,
 } from "@/lib/slot-rules";

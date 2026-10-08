@@ -9,13 +9,11 @@ interface Props {
   date: string;
   onSelect: (time: string) => void;
   onBack: () => void;
-  /** Size slots for a first visit (known once she's ticked it on the details step). */
-  isNewClient?: boolean;
   /** Why she's been sent back here (e.g. her previous time was just taken). */
   notice?: string | null;
 }
 
-export default function StepTime({ service, date, onSelect, onBack, isNewClient = false, notice }: Props) {
+export default function StepTime({ service, date, onSelect, onBack, notice }: Props) {
   const [slots, setSlots] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +25,7 @@ export default function StepTime({ service, date, onSelect, onBack, isNewClient 
 
     // Any failure is an error state, never an empty (or full) day.
     const fallback = "We couldn't load available times just now. Please try again.";
-    fetch(`/api/availability?serviceId=${service.id}&date=${date}${isNewClient ? "&newClient=1" : ""}`)
+    fetch(`/api/availability?serviceId=${service.id}&date=${date}`)
       .then(async (r) => {
         const data = await r.json().catch(() => null);
         if (r.ok && data && Array.isArray(data.slots)) setSlots(data.slots);
@@ -35,7 +33,7 @@ export default function StepTime({ service, date, onSelect, onBack, isNewClient 
       })
       .catch(() => setError(fallback))
       .finally(() => setLoading(false));
-  }, [service.id, date, isNewClient, attempt]);
+  }, [service.id, date, attempt]);
 
   const displayDate = formatDateDisplay(date);
 

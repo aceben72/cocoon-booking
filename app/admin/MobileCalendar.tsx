@@ -5,6 +5,7 @@ import { NewBookingForm } from "./appointments/NewBookingForm";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
 import { CompletePaymentPanel } from "@/components/CompletePaymentPanel";
 import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
+import { bookingLengthMinutes } from "@/lib/slot-rules";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -45,9 +46,6 @@ interface CalendarClassSession {
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────
-
-// Mirrors the extra buffer added at booking creation for new clients (app/api/bookings/route.ts)
-const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
 
 const HOUR_HEIGHT = 60; // px per hour
 const DAY_START   = 7;  // 7 am
@@ -387,13 +385,11 @@ export default function MobileCalendar() {
       setApptEditConflictChecking(true);
       try {
         const startISO = aestToISO(apptEditDate, apptEditTime);
-        const durationMinutes = selectedAppt.services?.duration_minutes ?? 60;
-        const paddingMinutes = selectedAppt.services?.padding_minutes ?? 30;
-        const skipNewClientPadding = selectedAppt.services?.category === "mother-daughter";
-        const totalMins =
-          durationMinutes +
-          paddingMinutes +
-          (!skipNewClientPadding && selectedAppt.clients?.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
+        // Same length the reschedule will save (app/api/admin/appointments/[id])
+        const totalMins = bookingLengthMinutes({
+          duration_minutes: selectedAppt.services?.duration_minutes ?? 60,
+          padding_minutes: selectedAppt.services?.padding_minutes ?? 30,
+        });
         const endISO = new Date(new Date(startISO).getTime() + totalMins * 60_000).toISOString();
         const res = await fetch(
           `/api/admin/conflict-check?start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}&excludeId=${selectedAppt.id}`,
@@ -1023,9 +1019,6 @@ export default function MobileCalendar() {
                 </div>
                 <p className="text-xs text-[#9a8f87]">{selectedAppt.services?.name ?? "—"}</p>
                 <LoyaltyBadge loyalty={selectedAppt.loyalty} className="mt-1" />
-                {selectedAppt.clients?.is_new_client && (
-                  <p className="text-xs text-[#7a6f68] mt-0.5 italic">+15 min consultation allocated</p>
-                )}
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize
                 ${selectedAppt.status === "confirmed"       ? "bg-emerald-50 text-emerald-700 border-emerald-200" :

@@ -46,14 +46,10 @@ export async function PUT(
   // Same total-slot-length rule used when the appointment was first created
   // (app/api/bookings/route.ts) so a reschedule doesn't shrink the blocked
   // window back down to bare duration_minutes.
-  const totalMins = bookingLengthMinutes(
-    {
-      duration_minutes: svc?.duration_minutes ?? 60,
-      padding_minutes: svc?.padding_minutes ?? 30,
-      category: svc?.category ?? "",
-    },
-    !!rescheduleClient?.is_new_client,
-  );
+  const totalMins = bookingLengthMinutes({
+    duration_minutes: svc?.duration_minutes ?? 60,
+    padding_minutes: svc?.padding_minutes ?? 30,
+  });
 
   const startISO = new Date(`${date}T${time}:00+10:00`).toISOString();
   const endISO   = new Date(new Date(startISO).getTime() + totalMins * 60_000).toISOString();

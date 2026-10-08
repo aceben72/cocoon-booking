@@ -64,10 +64,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid Australian mobile number" }, { status: 400 });
   }
 
-  // Compute UTC datetimes. Same length rule as the time list
-  // (GET /api/availability?newClient=1), incl. the new-client consultation time.
+  // Compute UTC datetimes. Same length rule as the time list: duration +
+  // padding, first visit or not (the consultation fits in the padding).
   const startISO = aestToUTC(date, time);
-  const totalMins = bookingLengthMinutes(service, !!client.is_new_client);
+  const totalMins = bookingLengthMinutes(service);
   const endDate = new Date(new Date(startISO).getTime() + totalMins * 60 * 1000);
   const endISO = endDate.toISOString();
 

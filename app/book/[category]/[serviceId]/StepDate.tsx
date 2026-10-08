@@ -8,8 +8,6 @@ import { toAESTDateString } from "@/lib/utils";
 interface Props {
   service: Service;
   onSelect: (date: string) => void;
-  /** Size slots for a first visit (known once she's ticked it on the details step). */
-  isNewClient?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -18,7 +16,7 @@ const MONTH_NAMES = [
 ];
 const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-export default function StepDate({ service, onSelect, isNewClient = false }: Props) {
+export default function StepDate({ service, onSelect }: Props) {
   const today = useMemo(() => new Date(), []);
   const todayStr = toAESTDateString(today);
 
@@ -62,7 +60,7 @@ export default function StepDate({ service, onSelect, isNewClient = false }: Pro
     }
     let cancelled = false;
     setCheckFailed(false);
-    fetch(`/api/availability?serviceId=${service.id}&dates=${candidateDates.join(",")}${isNewClient ? "&newClient=1" : ""}`)
+    fetch(`/api/availability?serviceId=${service.id}&dates=${candidateDates.join(",")}`)
       .then(async (res) => {
         const data = (await res.json().catch(() => null)) as { availability?: Record<string, string[]> } | null;
         if (cancelled) return;
@@ -82,7 +80,7 @@ export default function StepDate({ service, onSelect, isNewClient = false }: Pro
     return () => {
       cancelled = true;
     };
-  }, [service.id, candidateDates, isNewClient, attempt]);
+  }, [service.id, candidateDates, attempt]);
 
   const canGoPrev = calYear > today.getFullYear() || calMonth > today.getMonth();
   const canGoNext = useMemo(() => {

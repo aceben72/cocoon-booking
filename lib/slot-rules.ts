@@ -17,10 +17,6 @@ export const BLOCKING_APPOINTMENT_STATUSES = ["confirmed", "pending", "pending_p
 // duration_minutes + this padding on the calendar.
 export const CLASS_PADDING_MINUTES = 30;
 
-// New clients get an extra 15 min so the initial consultation doesn't push
-// into the next booking. Mother & Daughter class is exempt.
-export const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
-
 export const MIN_NOTICE_MS = 2 * 60 * 60 * 1000;
 
 /** Slots are offered on this grid from opening time. */
@@ -29,13 +25,15 @@ export const SLOT_STEP_MINUTES = 30;
 export interface SlotService {
   duration_minutes: number;
   padding_minutes: number;
-  category: string;
 }
 
-/** Minutes a new booking occupies: duration + padding (+15 for a new client). */
-export function bookingLengthMinutes(service: SlotService, isNewClient: boolean): number {
-  const extra = isNewClient && service.category !== "mother-daughter" ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0;
-  return service.duration_minutes + service.padding_minutes + extra;
+/**
+ * Minutes a new booking occupies: duration + padding. The same for first
+ * visits: since Oct 2026 Amanda fits the first-visit consultation into the
+ * padding, so "This is my first visit" no longer changes the length.
+ */
+export function bookingLengthMinutes(service: SlotService): number {
+  return service.duration_minutes + service.padding_minutes;
 }
 
 /** An occupied span in epoch milliseconds, end exclusive. */
@@ -44,7 +42,7 @@ export interface BusyWindow {
   endMs: number;
 }
 
-export type ServiceLookup = (serviceName: string) => Pick<SlotService, "duration_minutes" | "padding_minutes"> | undefined;
+export type ServiceLookup = (serviceName: string) => SlotService | undefined;
 
 interface ApptRow {
   start_datetime: string;

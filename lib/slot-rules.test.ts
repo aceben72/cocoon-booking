@@ -17,11 +17,11 @@ import {
 
 // Durations as in lib/services-data.ts (which can't be loaded under node --test).
 const SVC: Record<string, SlotService & { name: string }> = {
-  indulge: { name: "Indulge Facial", duration_minutes: 60, padding_minutes: 30, category: "facials" },
-  basic: { name: "Basic Facial", duration_minutes: 45, padding_minutes: 30, category: "facials" },
-  makeup: { name: "Professional Make-Up Application", duration_minutes: 75, padding_minutes: 45, category: "make-up" },
-  liftingCode: { name: "Lifting Code Facial", duration_minutes: 90, padding_minutes: 30, category: "facials" },
-  browWax: { name: "Brow Wax", duration_minutes: 30, padding_minutes: 30, category: "brow-treatments" },
+  indulge: { name: "Indulge Facial", duration_minutes: 60, padding_minutes: 30 },
+  basic: { name: "Basic Facial", duration_minutes: 45, padding_minutes: 30 },
+  makeup: { name: "Professional Make-Up Application", duration_minutes: 75, padding_minutes: 45 },
+  liftingCode: { name: "Lifting Code Facial", duration_minutes: 90, padding_minutes: 30 },
+  browWax: { name: "Brow Wax", duration_minutes: 30, padding_minutes: 30 },
 };
 const lookup: ServiceLookup = (name) => Object.values(SVC).find((s) => s.name === name);
 
@@ -76,14 +76,14 @@ const oct8 = fakeSupabase({
 });
 
 /** The time list exactly as GET /api/availability builds it. */
-function timeList(db: SupabaseClient, svc: SlotService, isNew: boolean, nowMs: number) {
-  return fetchTimeList(db, { date: DAY, lengthMinutes: bookingLengthMinutes(svc, isNew), openTime: OPEN, closeTime: CLOSE, nowMs, lookup });
+function timeList(db: SupabaseClient, svc: SlotService, nowMs: number) {
+  return fetchTimeList(db, { date: DAY, lengthMinutes: bookingLengthMinutes(svc), openTime: OPEN, closeTime: CLOSE, nowMs, lookup });
 }
 
 /** The submit-time check exactly as POST /api/bookings runs it. */
-function submitClashes(db: SupabaseClient, svc: SlotService, isNew: boolean, hhmm: string, opts?: BusyQueryOptions) {
+function submitClashes(db: SupabaseClient, svc: SlotService, hhmm: string, opts?: BusyQueryOptions) {
   const start = aestToEpochMs(DAY, hhmm);
-  const end = start + bookingLengthMinutes(svc, isNew) * 60_000;
+  const end = start + bookingLengthMinutes(svc) * 60_000;
   return hasConflict(db, new Date(start).toISOString(), new Date(end).toISOString(), lookup, opts);
 }
 
@@ -95,37 +95,48 @@ test("pending_payment holds its slot", () => {
   assert.ok(!(BLOCKING_APPOINTMENT_STATUSES as readonly string[]).includes("cancelled"));
 });
 
-test("new-client length: +15, except Mother & Daughter", () => {
-  assert.equal(bookingLengthMinutes(SVC.indulge, false), 90);
-  assert.equal(bookingLengthMinutes(SVC.indulge, true), 105);
-  const md = { duration_minutes: 120, padding_minutes: 30, category: "mother-daughter" };
-  assert.equal(bookingLengthMinutes(md, true), 150);
+test("booking length is duration + padding, first visit or not", () => {
+  // No new-client input any more: the first-visit tick can't change the length.
+  assert.equal(bookingLengthMinutes.length, 1);
+  assert.equal(bookingLengthMinutes(SVC.indulge), 90);
+  assert.equal(bookingLengthMinutes(SVC.makeup), 120);
+  assert.equal(bookingLengthMinutes({ duration_minutes: 120, padding_minutes: 30 }), 150); // Mother & Daughter
 });
 
 test("8 Oct: Indulge time list matches what the submit check accepts", async () => {
-  assert.deepEqual(await timeList(oct8, SVC.indulge, false, EARLY), ["10:00", "13:00", "13:30"]);
-  assert.deepEqual(await timeList(oct8, SVC.indulge, true, EARLY), ["13:00"]);
+  assert.deepEqual(await timeList(oct8, SVC.indulge, EARLY), ["10:00", "13:00", "13:30"]);
   // What she should have been shown at 9:55 (she was shown 12:00–4:00)
-  assert.deepEqual(await timeList(oct8, SVC.indulge, false, AT_955), ["13:00", "13:30"]);
-  assert.deepEqual(await timeList(oct8, SVC.indulge, true, AT_955), ["13:00"]);
-  // Her rejected attempts are still rejected; the one that went through still does
-  assert.equal(await submitClashes(oct8, SVC.indulge, true, "13:30"), true);
-  assert.equal(await submitClashes(oct8, SVC.indulge, true, "14:00"), true);
-  assert.equal(await submitClashes(oct8, SVC.indulge, false, "14:00"), true);
-  assert.equal(await submitClashes(oct8, SVC.indulge, false, "13:00"), false);
+  assert.deepEqual(await timeList(oct8, SVC.indulge, AT_955), ["13:00", "13:30"]);
+  assert.equal(await submitClashes(oct8, SVC.indulge, "14:00"), true);
+  assert.equal(await submitClashes(oct8, SVC.indulge, "13:00"), false);
+});
+
+test("first visits: ticked and unticked get the same times (the cases that used to differ)", async () => {
+  // Under the old +15 rule a first visit was offered only 1:00pm for Indulge,
+  // nothing for Pro Make-Up, and lost 4:30pm for Brow Wax. Now identical:
+  assert.deepEqual(await timeList(oct8, SVC.indulge, EARLY), ["10:00", "13:00", "13:30"]);
+  assert.deepEqual(await timeList(oct8, SVC.makeup, EARLY), ["13:00"]); // 75+45 fills 1–3pm exactly
+  assert.deepEqual(await timeList(oct8, SVC.browWax, EARLY), ["10:00", "10:30", "13:00", "13:30", "14:00", "16:30"]);
+  // ...and the submit check accepts them (her rejected 1:30pm would now go through)
+  assert.equal(await submitClashes(oct8, SVC.indulge, "13:30"), false);
+  assert.equal(await submitClashes(oct8, SVC.indulge, "10:00"), false);
+  assert.equal(await submitClashes(oct8, SVC.makeup, "13:00"), false);
+  assert.equal(await submitClashes(oct8, SVC.browWax, "16:30"), false);
 });
 
 test("8 Oct: other durations", async () => {
-  // 75+45 = 120 min fills the 1–3pm gap exactly; +15 for a new client doesn't fit
-  assert.deepEqual(await timeList(oct8, SVC.makeup, false, EARLY), ["13:00"]);
-  assert.deepEqual(await timeList(oct8, SVC.makeup, true, EARLY), []);
   // 45+30 = 75 min
-  assert.deepEqual(await timeList(oct8, SVC.basic, false, EARLY), ["10:00", "13:00", "13:30"]);
-  assert.deepEqual(await timeList(oct8, SVC.basic, true, EARLY), ["10:00", "13:00", "13:30"]);
-  // 30+30 = 60 min; afternoon after the 3pm booking opens up
-  assert.deepEqual(await timeList(oct8, SVC.browWax, false, EARLY), ["10:00", "10:30", "13:00", "13:30", "14:00", "16:30"]);
-  // 4:30pm is gone for a new client: 75 min would run past the 5:30 close
-  assert.deepEqual(await timeList(oct8, SVC.browWax, true, EARLY), ["10:00", "13:00", "13:30"]);
+  assert.deepEqual(await timeList(oct8, SVC.basic, EARLY), ["10:00", "13:00", "13:30"]);
+  // 90+30 = 120 min fits only the 1–3pm gap
+  assert.deepEqual(await timeList(oct8, SVC.liftingCode, EARLY), ["13:00"]);
+});
+
+test("an existing booking stored with the old +15 still blocks its stored length", async () => {
+  // Booked as a first visit before the change: Indulge 11:30, stored to 1:15pm
+  const db = fakeSupabase({ appointments: [appt(DAY, "11:30", "13:15", "confirmed", SVC.indulge)] });
+  assert.equal(await submitClashes(db, SVC.indulge, "13:00"), true);
+  assert.equal(await submitClashes(db, SVC.indulge, "13:30"), false);
+  assert.ok(!(await timeList(db, SVC.indulge, EARLY)).includes("13:00"));
 });
 
 // 8 Oct plus a 4:00–5:00pm block-out, so the sweep below covers blocked periods too
@@ -137,21 +148,20 @@ const oct8Blocked = fakeSupabase({
   blocked_periods: [{ start_datetime: iso(DAY, "16:00"), end_datetime: iso(DAY, "17:00") }],
 });
 
-test("time list and submit check agree on every slot, every service, new and returning", async () => {
-  for (const day of [oct8, oct8Blocked])
-  for (const svc of Object.values(SVC)) {
-    for (const isNew of [false, true]) {
+test("time list and submit check agree on every slot, every service", async () => {
+  for (const day of [oct8, oct8Blocked]) {
+    for (const svc of Object.values(SVC)) {
       for (const now of [EARLY, AT_955]) {
-        const offered = new Set(await timeList(day, svc, isNew, now));
-        const len = bookingLengthMinutes(svc, isNew);
+        const offered = new Set(await timeList(day, svc, now));
+        const len = bookingLengthMinutes(svc);
         for (let m = 10 * 60; m + len <= 17 * 60 + 30; m += 30) {
           const hhmm = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
           if (aestToEpochMs(DAY, hhmm) - now < 2 * 3600_000) {
             assert.ok(!offered.has(hhmm), `${svc.name} ${hhmm} offered inside 2h notice`);
             continue;
           }
-          const clash = await submitClashes(day, svc, isNew, hhmm);
-          assert.equal(offered.has(hhmm), !clash, `${svc.name} new=${isNew} ${hhmm}: offered=${offered.has(hhmm)} clash=${clash}`);
+          const clash = await submitClashes(day, svc, hhmm);
+          assert.equal(offered.has(hhmm), !clash, `${svc.name} ${hhmm}: offered=${offered.has(hhmm)} clash=${clash}`);
         }
       }
     }
@@ -176,9 +186,9 @@ test("group class sessions block duration + 30 min on both sides", async () => {
     ],
   });
   // Class holds 12:00–14:30; the inactive one at 4pm holds nothing
-  assert.deepEqual(await timeList(db, SVC.indulge, false, EARLY), ["10:00", "10:30", "14:30", "15:00", "15:30", "16:00"]);
-  assert.equal(await submitClashes(db, SVC.indulge, false, "14:00"), true);
-  assert.equal(await submitClashes(db, SVC.indulge, false, "14:30"), false);
+  assert.deepEqual(await timeList(db, SVC.indulge, EARLY), ["10:00", "10:30", "14:30", "15:00", "15:30", "16:00"]);
+  assert.equal(await submitClashes(db, SVC.indulge, "14:00"), true);
+  assert.equal(await submitClashes(db, SVC.indulge, "14:30"), false);
 });
 
 test("blocked periods: a block-out added after the page loaded is rejected at submit", async () => {
@@ -188,36 +198,36 @@ test("blocked periods: a block-out added after the page loaded is rejected at su
     blocked_periods: [{ start_datetime: iso(DAY, "13:00"), end_datetime: iso(DAY, "14:00") }],
   });
   // Page loaded before the block-out: 1:00pm was on offer
-  assert.ok((await timeList(oct8, SVC.indulge, false, EARLY)).includes("13:00"));
+  assert.ok((await timeList(oct8, SVC.indulge, EARLY)).includes("13:00"));
   // Submit now rejects it, and the refreshed list no longer offers it
-  assert.equal(await submitClashes(db, SVC.indulge, false, "13:00"), true);
-  assert.equal(await submitClashes(db, SVC.indulge, false, "13:30"), true); // starts inside the block-out
-  assert.deepEqual(await timeList(db, SVC.indulge, false, EARLY), ["10:00", "14:00", "14:30", "15:00", "15:30", "16:00"]);
+  assert.equal(await submitClashes(db, SVC.indulge, "13:00"), true);
+  assert.equal(await submitClashes(db, SVC.indulge, "13:30"), true); // starts inside the block-out
+  assert.deepEqual(await timeList(db, SVC.indulge, EARLY), ["10:00", "14:00", "14:30", "15:00", "15:30", "16:00"]);
   // A slot ending exactly as the block-out starts is fine
   const touching = fakeSupabase({ blocked_periods: [{ start_datetime: iso(DAY, "11:30"), end_datetime: iso(DAY, "12:00") }] });
-  assert.equal(await submitClashes(touching, SVC.indulge, false, "10:00"), false);
+  assert.equal(await submitClashes(touching, SVC.indulge, "10:00"), false);
   // Admin creation paths opt out: Amanda may book over her own block-out
-  assert.equal(await submitClashes(db, SVC.indulge, false, "13:00", { ignoreBlockedPeriods: true }), false);
+  assert.equal(await submitClashes(db, SVC.indulge, "13:00", { ignoreBlockedPeriods: true }), false);
 });
 
 test("blocked periods spanning several days block the whole day", async () => {
   const db = fakeSupabase({
     blocked_periods: [{ start_datetime: iso("2026-10-06", "09:00"), end_datetime: iso("2026-10-10", "18:00") }],
   });
-  assert.deepEqual(await timeList(db, SVC.indulge, false, EARLY), []);
-  assert.equal(await submitClashes(db, SVC.indulge, false, "13:00"), true);
+  assert.deepEqual(await timeList(db, SVC.indulge, EARLY), []);
+  assert.equal(await submitClashes(db, SVC.indulge, "13:00"), true);
 });
 
 test("fail closed: submit check rejects (throws) if any query errors", async () => {
   for (const broken of ["appointments", "class_sessions", "blocked_periods"]) {
     const db = fakeSupabase({ [broken]: "error" });
-    await assert.rejects(submitClashes(db, SVC.indulge, false, "13:00"), SlotCheckError, `${broken} error let the booking through`);
+    await assert.rejects(submitClashes(db, SVC.indulge, "13:00"), SlotCheckError, `${broken} error let the booking through`);
   }
 });
 
 test("fail closed: time list errors (throws) instead of returning an empty or full day", async () => {
   for (const broken of ["appointments", "class_sessions", "blocked_periods"]) {
     const db = fakeSupabase({ [broken]: "error" });
-    await assert.rejects(timeList(db, SVC.indulge, false, EARLY), SlotCheckError, `${broken} error gave a time list`);
+    await assert.rejects(timeList(db, SVC.indulge, EARLY), SlotCheckError, `${broken} error gave a time list`);
   }
 });

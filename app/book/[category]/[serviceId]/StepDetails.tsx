@@ -13,15 +13,6 @@ interface Props {
   showNewClientCheckbox?: boolean;
   /** Details to start with (kept when she's sent back to pick another time). */
   initial?: ClientDetailsForm | null;
-  /**
-   * Does the chosen time still fit once "first visit" is ticked? Resolves true
-   * when it fits or can't be checked (the server re-checks on submit anyway).
-   */
-  checkSlotFitsNewClient?: () => Promise<boolean>;
-  /** The chosen time doesn't fit a first visit: go back to the times, keeping these details. */
-  onSlotDoesNotFit?: (details: ClientDetailsForm) => void;
-  /** Time label shown in the "doesn't fit" message, e.g. "1:30pm". */
-  selectedTimeLabel?: string;
   /** Called with the details as she types, so a parent "Change" link can keep them. */
   onDraftChange?: (draft: ClientDetailsForm) => void;
 }
@@ -33,9 +24,6 @@ export default function StepDetails({
   backHref,
   showNewClientCheckbox = true,
   initial,
-  checkSlotFitsNewClient,
-  onSlotDoesNotFit,
-  selectedTimeLabel,
   onDraftChange,
 }: Props) {
   const [form, setForm] = useState<ClientDetailsForm>(
@@ -53,27 +41,6 @@ export default function StepDetails({
   useEffect(() => {
     onDraftChange?.(form);
   }, [form, onDraftChange]);
-  // null = not checked / not a first visit; false = chosen time is too short for one
-  const [slotFits, setSlotFits] = useState<boolean | null>(null);
-  const [checkingSlot, setCheckingSlot] = useState(false);
-
-  const runSlotCheck = async (): Promise<boolean> => {
-    if (!checkSlotFitsNewClient) return true;
-    setCheckingSlot(true);
-    try {
-      const fits = await checkSlotFitsNewClient();
-      setSlotFits(fits);
-      return fits;
-    } finally {
-      setCheckingSlot(false);
-    }
-  };
-
-  const toggleNewClient = (checked: boolean) => {
-    update("is_new_client", checked);
-    setSlotFits(null);
-    if (checked) void runSlotCheck();
-  };
 
   const update = (key: keyof ClientDetailsForm, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -92,17 +59,9 @@ export default function StepDetails({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
-    const details = { ...form, is_new_client: showNewClientCheckbox ? form.is_new_client : false };
-    // A first visit needs 15 extra minutes; make sure the chosen time still
-    // fits before she reaches payment, rather than hitting a clash there.
-    if (details.is_new_client && onSlotDoesNotFit && !(await runSlotCheck())) {
-      onSlotDoesNotFit(details);
-      return;
-    }
-    onSubmit(details);
+    if (validate()) onSubmit({ ...form, is_new_client: showNewClientCheckbox ? form.is_new_client : false });
   };
 
   return (
@@ -220,7 +179,7 @@ export default function StepDetails({
                   <input
                     type="checkbox"
                     checked={form.is_new_client}
-                    onChange={(e) => toggleNewClient(e.target.checked)}
+                    onChange={(e) => update("is_new_client", e.target.checked)}
                     className="sr-only"
                   />
                   <div
@@ -249,29 +208,14 @@ export default function StepDetails({
                   </p>
                 </div>
               )}
-              {form.is_new_client && slotFits === false && onSlotDoesNotFit && (
-                <div role="alert" className="ml-8 px-4 py-3 bg-[#fdf6ea] rounded-xl border border-[#fbb040]/40">
-                  <p className="text-sm text-[#5a504a] font-light leading-snug mb-2">
-                    {selectedTimeLabel ?? "Your chosen time"}{" "}doesn&apos;t leave room for the extra 15 minutes.
-                    Please pick another time. Your details will be kept.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => onSlotDoesNotFit(form)}
-                    className="text-sm text-[#044e77] font-medium hover:underline"
-                  >
-                    Choose another time
-                  </button>
-                </div>
-              )}
+
             </div>
           )}
         </div>
 
         <button
           type="submit"
-          disabled={checkingSlot}
-          className="w-full mt-5 disabled:opacity-60 bg-[#044e77] text-white rounded-xl py-4 px-6 font-medium
+          className="w-full mt-5 bg-[#044e77] text-white rounded-xl py-4 px-6 font-medium
                      hover:bg-[#033d5c] active:bg-[#022d44] transition-colors"
         >
           Continue to payment

@@ -4,22 +4,18 @@ import { openingHoursFor, DEFAULT_AVAILABILITY } from "@/lib/availability";
 import { getTimeList, bookingLengthMinutes } from "@/lib/booking-conflicts";
 
 /**
- * GET /api/availability?serviceId=xxx&date=YYYY-MM-DD[&newClient=1]
+ * GET /api/availability?serviceId=xxx&date=YYYY-MM-DD
  * Returns available time slots for a service on a given AEST date.
  *
- * GET /api/availability?serviceId=xxx&dates=YYYY-MM-DD,YYYY-MM-DD,...[&newClient=1]
+ * GET /api/availability?serviceId=xxx&dates=YYYY-MM-DD,YYYY-MM-DD,...
  * Batch mode: returns { availability: { [date]: string[] } } so the calendar
  * can determine which dates have zero slots without one request per date.
- *
- * newClient=1 sizes each slot with the new-client consultation time, exactly
- * as POST /api/bookings will when the client ticks "first visit".
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const serviceId = searchParams.get("serviceId");
   const date = searchParams.get("date");
   const datesParam = searchParams.get("dates");
-  const isNewClient = searchParams.get("newClient") === "1";
 
   if (!serviceId || (!date && !datesParam)) {
     return NextResponse.json({ error: "serviceId and date (or dates) are required" }, { status: 400 });
@@ -38,7 +34,7 @@ export async function GET(request: NextRequest) {
     let results: (readonly [string, string[]])[];
     try {
       results = await Promise.all(
-        dates.map(async (d) => [d, await getSlotsForDate(service, d, isNewClient)] as const),
+        dates.map(async (d) => [d, await getSlotsForDate(service, d)] as const),
       );
     } catch (err) {
       return slotsUnavailable(err);
@@ -54,7 +50,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const slots = await getSlotsForDate(service, date!, isNewClient);
+    const slots = await getSlotsForDate(service, date!);
     return NextResponse.json({ slots });
   } catch (err) {
     return slotsUnavailable(err);
@@ -76,7 +72,6 @@ function slotsUnavailable(err: unknown) {
 async function getSlotsForDate(
   service: (typeof SERVICES)[number],
   date: string,
-  isNewClient: boolean,
 ): Promise<string[]> {
   const hours = openingHoursFor(date, DEFAULT_AVAILABILITY);
   if (!hours) return [];
@@ -92,7 +87,7 @@ async function getSlotsForDate(
   // hasBookingConflict uses, so a slot shown here passes the submit check.
   return getTimeList(supabase, {
     date,
-    lengthMinutes: bookingLengthMinutes(service, isNewClient),
+    lengthMinutes: bookingLengthMinutes(service),
     openTime: hours.openTime,
     closeTime: hours.closeTime,
     nowMs: Date.now(),

@@ -72,8 +72,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Double-booking check (include pending_payment — slot is reserved)
-  if (await hasBookingConflict(db, startISO, endISO)) {
+  // Double-booking check (include pending_payment — slot is reserved).
+  // Blocked periods are skipped: Amanda may book over her own block-out
+  // (the admin form warns via /api/admin/conflict-check instead).
+  let clash: boolean;
+  try {
+    clash = await hasBookingConflict(db, startISO, endISO, { ignoreBlockedPeriods: true });
+  } catch (err) {
+    console.error("[admin/bookings] clash check failed:", err);
+    return NextResponse.json({ error: "Couldn't check for clashes. Please try again." }, { status: 503 });
+  }
+  if (clash) {
     return NextResponse.json(
       { error: "That time slot already has an existing booking." },
       { status: 409 },

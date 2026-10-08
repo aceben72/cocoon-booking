@@ -80,17 +80,39 @@ export function effectiveAppointmentEndMs(
   return Math.max(storedEnd, recomputedEnd);
 }
 
+export interface BusyQueryOptions {
+  excludeAppointmentId?: string;
+  excludeClassSessionId?: string;
+  /**
+   * Skip blocked periods. Only for admin creation paths, where Amanda may
+   * deliberately book over her own block-out (the admin UI warns instead).
+   */
+  ignoreBlockedPeriods?: boolean;
+}
+
+/** A clash/availability query failed. Callers must fail closed, never treat it as "free". */
+export class SlotCheckError extends Error {
+  constructor(what: string, cause: unknown) {
+    super(`Slot check failed reading ${what}`);
+    this.name = "SlotCheckError";
+    this.cause = cause;
+  }
+}
+
 /**
  * Busy windows from every blocking appointment and active group class session
- * that STARTS in [fromISO, toISO). Callers widen fromISO (24h is plenty) so
- * something that starts earlier but runs into their range is still caught.
+ * that STARTS in [fromISO, toISO), plus every blocked period OVERLAPPING it.
+ * Callers widen fromISO (24h is plenty) so something that starts earlier but
+ * runs into their range is still caught.
+ *
+ * Throws SlotCheckError if any query fails.
  */
 export async function fetchBusyWindows(
   supabase: SupabaseClient,
   fromISO: string,
   toISO: string,
   lookup: ServiceLookup,
-  opts: { excludeAppointmentId?: string; excludeClassSessionId?: string } = {},
+  opts: BusyQueryOptions = {},
 ): Promise<BusyWindow[]> {
   let apptQuery = supabase
     .from("appointments")
@@ -112,18 +134,32 @@ export async function fetchBusyWindows(
     sessionQuery = sessionQuery.neq("id", opts.excludeClassSessionId);
   }
 
-  const [{ data: appts }, { data: sessions }] = await Promise.all([apptQuery, sessionQuery]);
+  const blockedQuery = opts.ignoreBlockedPeriods
+    ? Promise.resolve({ data: [], error: null })
+    : supabase
+        .from("blocked_periods")
+        .select("start_datetime, end_datetime")
+        .lt("start_datetime", toISO)
+        .gt("end_datetime", fromISO);
+
+  const [apptRes, sessionRes, blockedRes] = await Promise.all([apptQuery, sessionQuery, blockedQuery]);
+  if (apptRes.error) throw new SlotCheckError("appointments", apptRes.error);
+  if (sessionRes.error) throw new SlotCheckError("class sessions", sessionRes.error);
+  if (blockedRes.error) throw new SlotCheckError("blocked periods", blockedRes.error);
 
   const windows: BusyWindow[] = [];
-  for (const a of (appts ?? []) as unknown as ApptRow[]) {
+  for (const a of (apptRes.data ?? []) as unknown as ApptRow[]) {
     windows.push({
       startMs: new Date(a.start_datetime).getTime(),
       endMs: effectiveAppointmentEndMs(a.start_datetime, a.end_datetime, a.services?.name, lookup),
     });
   }
-  for (const cs of (sessions ?? []) as ClassSessionRow[]) {
+  for (const cs of (sessionRes.data ?? []) as ClassSessionRow[]) {
     const startMs = new Date(cs.start_datetime).getTime();
     windows.push({ startMs, endMs: startMs + (cs.duration_minutes + CLASS_PADDING_MINUTES) * 60_000 });
+  }
+  for (const bp of (blockedRes.data ?? []) as { start_datetime: string; end_datetime: string }[]) {
+    windows.push({ startMs: new Date(bp.start_datetime).getTime(), endMs: new Date(bp.end_datetime).getTime() });
   }
   return windows;
 }
@@ -137,13 +173,15 @@ export function overlapsAny(startMs: number, endMs: number, windows: BusyWindow[
  * Submit-time clash check: does [startISO, endISO) overlap any busy window?
  * Queries from 24h before the start so an earlier booking whose (possibly
  * recomputed) end runs into the slot is still caught.
+ *
+ * Throws SlotCheckError if the check couldn't be done; callers must reject.
  */
 export async function hasConflict(
   supabase: SupabaseClient,
   startISO: string,
   endISO: string,
   lookup: ServiceLookup,
-  opts: { excludeAppointmentId?: string; excludeClassSessionId?: string } = {},
+  opts: BusyQueryOptions = {},
 ): Promise<boolean> {
   const newStart = new Date(startISO).getTime();
   const newEnd = new Date(endISO).getTime();
@@ -171,7 +209,7 @@ function timeToMinutes(hhmm: string): number {
 /**
  * Start times ("HH:MM" AEST) to offer on `date`: on the 30-min grid from
  * opening, the whole booking (incl. padding) finishing by close, at least
- * MIN_NOTICE_MS after `nowMs`, and clear of every busy and blocked window.
+ * MIN_NOTICE_MS after `nowMs`, and clear of every busy window.
  */
 export function offeredSlots(p: {
   date: string;
@@ -179,7 +217,6 @@ export function offeredSlots(p: {
   openTime: string;
   closeTime: string;
   busy: BusyWindow[];
-  blocked: BusyWindow[];
   nowMs: number;
 }): string[] {
   const open = timeToMinutes(p.openTime);
@@ -190,8 +227,27 @@ export function offeredSlots(p: {
     const startMs = aestToEpochMs(p.date, hhmm);
     const endMs = startMs + p.lengthMinutes * 60_000;
     if (startMs - p.nowMs < MIN_NOTICE_MS) continue;
-    if (overlapsAny(startMs, endMs, p.busy) || overlapsAny(startMs, endMs, p.blocked)) continue;
+    if (overlapsAny(startMs, endMs, p.busy)) continue;
     slots.push(hhmm);
   }
   return slots;
+}
+
+/**
+ * The public time list for one AEST date: busy windows for the whole day
+ * (same fetch as hasConflict, from 24h before so earlier bookings that run
+ * into the day count) fed through offeredSlots.
+ *
+ * Throws SlotCheckError if the day couldn't be read; the caller must show an
+ * error, not an empty or a wide-open day.
+ */
+export async function fetchTimeList(
+  supabase: SupabaseClient,
+  p: { date: string; lengthMinutes: number; openTime: string; closeTime: string; nowMs: number; lookup: ServiceLookup },
+): Promise<string[]> {
+  const dayStartMs = aestToEpochMs(p.date, "00:00");
+  const from = new Date(dayStartMs - 24 * 60 * 60 * 1000).toISOString();
+  const to = new Date(dayStartMs + 24 * 60 * 60 * 1000).toISOString();
+  const busy = await fetchBusyWindows(supabase, from, to, p.lookup);
+  return offeredSlots({ ...p, busy });
 }

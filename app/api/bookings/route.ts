@@ -109,7 +109,16 @@ export async function POST(request: NextRequest) {
   const serviceUUID = dbService.id as string;
 
   // ── Double-booking check ──────────────────────────────────────────────
-  if (await hasBookingConflict(supabase, startISO, endISO)) {
+  // Appointments, class sessions and blocked periods. If the check itself
+  // fails, reject: never take a booking we couldn't check.
+  let clash: boolean;
+  try {
+    clash = await hasBookingConflict(supabase, startISO, endISO);
+  } catch (err) {
+    console.error("[bookings] clash check failed:", err);
+    return NextResponse.json({ error: "Something went wrong, please try again." }, { status: 503 });
+  }
+  if (clash) {
     return NextResponse.json(
       { error: "This time slot is no longer available. Please choose another.", code: "slot_unavailable" },
       { status: 409 },

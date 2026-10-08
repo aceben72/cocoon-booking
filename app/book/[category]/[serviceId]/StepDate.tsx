@@ -52,6 +52,8 @@ export default function StepDate({ service, onSelect, isNewClient = false }: Pro
   );
 
   const [datesWithNoSlots, setDatesWithNoSlots] = useState<Set<string>>(new Set());
+  const [checkFailed, setCheckFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (candidateDates.length === 0) {
@@ -59,10 +61,15 @@ export default function StepDate({ service, onSelect, isNewClient = false }: Pro
       return;
     }
     let cancelled = false;
+    setCheckFailed(false);
     fetch(`/api/availability?serviceId=${service.id}&dates=${candidateDates.join(",")}${isNewClient ? "&newClient=1" : ""}`)
-      .then((res) => res.json())
-      .then((data: { availability?: Record<string, string[]> }) => {
-        if (cancelled || !data.availability) return;
+      .then(async (res) => {
+        const data = (await res.json().catch(() => null)) as { availability?: Record<string, string[]> } | null;
+        if (cancelled) return;
+        if (!res.ok || !data?.availability) {
+          setCheckFailed(true);
+          return;
+        }
         const empty = new Set<string>();
         for (const [d, slots] of Object.entries(data.availability)) {
           if (slots.length === 0) empty.add(d);
@@ -70,12 +77,12 @@ export default function StepDate({ service, onSelect, isNewClient = false }: Pro
         setDatesWithNoSlots(empty);
       })
       .catch(() => {
-        // If the check fails, fall back to the static weekly-schedule rule only.
+        if (!cancelled) setCheckFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [service.id, candidateDates, isNewClient]);
+  }, [service.id, candidateDates, isNewClient, attempt]);
 
   const canGoPrev = calYear > today.getFullYear() || calMonth > today.getMonth();
   const canGoNext = useMemo(() => {
@@ -98,6 +105,19 @@ export default function StepDate({ service, onSelect, isNewClient = false }: Pro
       <h2 className="font-[family-name:var(--font-cormorant)] text-3xl font-light italic text-[#044e77] mb-6">
         Choose a date
       </h2>
+
+      {/* Dates stay clickable (weekly schedule only); the time step shows its own error if it still can't load. */}
+      {checkFailed && (
+        <div role="alert" className="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-4 text-sm">
+          We couldn&apos;t check which days have times free just now.
+          <button
+            onClick={() => setAttempt((n) => n + 1)}
+            className="block mt-2 text-sm font-medium text-red-700 underline hover:text-red-900"
+          >
+            Try again
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-[#e8e0d8] p-6">
         {/* Month nav */}

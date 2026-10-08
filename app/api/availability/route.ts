@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SERVICES } from "@/lib/services-data";
 import { openingHoursFor, DEFAULT_AVAILABILITY } from "@/lib/availability";
-import { getBusyWindows, bookingLengthMinutes } from "@/lib/booking-conflicts";
-import { offeredSlots, type BusyWindow } from "@/lib/slot-rules";
+import { getTimeList, bookingLengthMinutes } from "@/lib/booking-conflicts";
 
 /**
  * GET /api/availability?serviceId=xxx&date=YYYY-MM-DD[&newClient=1]
@@ -36,9 +35,14 @@ export async function GET(request: NextRequest) {
     if (dates.some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d))) {
       return NextResponse.json({ error: "dates must be YYYY-MM-DD" }, { status: 400 });
     }
-    const results = await Promise.all(
-      dates.map(async (d) => [d, await getSlotsForDate(service, d, isNewClient)] as const),
-    );
+    let results: (readonly [string, string[]])[];
+    try {
+      results = await Promise.all(
+        dates.map(async (d) => [d, await getSlotsForDate(service, d, isNewClient)] as const),
+      );
+    } catch (err) {
+      return slotsUnavailable(err);
+    }
     const availability: Record<string, string[]> = {};
     for (const [d, slots] of results) availability[d] = slots;
     return NextResponse.json({ availability });
@@ -49,8 +53,24 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });
   }
 
-  const filtered = await getSlotsForDate(service, date!, isNewClient);
-  return NextResponse.json({ slots: filtered });
+  try {
+    const slots = await getSlotsForDate(service, date!, isNewClient);
+    return NextResponse.json({ slots });
+  } catch (err) {
+    return slotsUnavailable(err);
+  }
+}
+
+/**
+ * The day couldn't be read. Fail closed: an error, never an empty day (looks
+ * fully booked) or a wide-open one (offers slots the submit check may reject).
+ */
+function slotsUnavailable(err: unknown) {
+  console.error("[availability] slot lookup failed:", err);
+  return NextResponse.json(
+    { error: "We couldn't load available times just now. Please try again." },
+    { status: 503 },
+  );
 }
 
 async function getSlotsForDate(
@@ -61,51 +81,20 @@ async function getSlotsForDate(
   const hours = openingHoursFor(date, DEFAULT_AVAILABILITY);
   if (!hours) return [];
 
-  let busy: BusyWindow[] = [];
-  let blocked: BusyWindow[] = [];
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) throw new Error("Database not configured");
 
-  try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (supabaseUrl && supabaseKey) {
-      const { createClient } = await import("@supabase/supabase-js");
-      const supabase = createClient(supabaseUrl, supabaseKey);
-
-      // Date range in UTC: AEST date is UTC+10, so AEST 00:00 = UTC prev-day 14:00
-      const [y, mo, d] = date.split("-").map(Number);
-      const startUTC = new Date(Date.UTC(y, mo - 1, d, -10, 0, 0)).toISOString();
-      const endUTC   = new Date(Date.UTC(y, mo - 1, d,  14, 0, 0)).toISOString();
-
-      // Appointments and class sessions: the SAME fetch hasBookingConflict
-      // uses (same statuses, same recomputed ends), widened 24h back to catch
-      // anything that starts the day before and runs into this one.
-      const busyFrom = new Date(Date.UTC(y, mo - 1, d, -34, 0, 0)).toISOString();
-      busy = await getBusyWindows(supabase, busyFrom, endUTC);
-
-      // Blocked periods overlapping this date
-      const { data: blockedRows } = await supabase
-        .from("blocked_periods")
-        .select("start_datetime, end_datetime")
-        .lt("start_datetime", endUTC)
-        .gt("end_datetime", startUTC);
-
-      blocked = (blockedRows ?? []).map((b: { start_datetime: string; end_datetime: string }) => ({
-        startMs: new Date(b.start_datetime).getTime(),
-        endMs: new Date(b.end_datetime).getTime(),
-      }));
-    }
-  } catch {
-    // Supabase not configured — return availability-only slots
-  }
-
-  return offeredSlots({
+  // Appointments, class sessions and blocked periods: the SAME fetch
+  // hasBookingConflict uses, so a slot shown here passes the submit check.
+  return getTimeList(supabase, {
     date,
     lengthMinutes: bookingLengthMinutes(service, isNewClient),
     openTime: hours.openTime,
     closeTime: hours.closeTime,
-    busy,
-    blocked,
     nowMs: Date.now(),
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ClientDetailsForm } from "@/types";
 import { isValidAustralianMobile } from "@/lib/utils";
 
@@ -22,6 +22,8 @@ interface Props {
   onSlotDoesNotFit?: (details: ClientDetailsForm) => void;
   /** Time label shown in the "doesn't fit" message, e.g. "1:30pm". */
   selectedTimeLabel?: string;
+  /** Called with the details as she types, so a parent "Change" link can keep them. */
+  onDraftChange?: (draft: ClientDetailsForm) => void;
 }
 
 export default function StepDetails({
@@ -34,6 +36,7 @@ export default function StepDetails({
   checkSlotFitsNewClient,
   onSlotDoesNotFit,
   selectedTimeLabel,
+  onDraftChange,
 }: Props) {
   const [form, setForm] = useState<ClientDetailsForm>(
     initial ?? {
@@ -46,6 +49,10 @@ export default function StepDetails({
     },
   );
   const [errors, setErrors] = useState<Partial<Record<keyof ClientDetailsForm, string>>>({});
+
+  useEffect(() => {
+    onDraftChange?.(form);
+  }, [form, onDraftChange]);
   // null = not checked / not a first visit; false = chosen time is too short for one
   const [slotFits, setSlotFits] = useState<boolean | null>(null);
   const [checkingSlot, setCheckingSlot] = useState(false);

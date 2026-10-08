@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import type { Service, ClientDetailsForm } from "@/types";
 import BookingProgress from "@/components/BookingProgress";
 import StepDate from "./StepDate";
@@ -43,6 +43,11 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
   const [error, setError] = useState<string | null>(null);
   // Shown on the time step when she's been sent back to pick another time.
   const [timeNotice, setTimeNotice] = useState<string | null>(null);
+  // What she's typed on the details step so far, so every way back keeps it.
+  const detailsDraft = useRef<ClientDetailsForm | null>(null);
+  const handleDetailsDraft = useCallback((draft: ClientDetailsForm) => {
+    detailsDraft.current = draft;
+  }, []);
 
   // Known once she's ticked "first visit". From then on the date and time
   // lists are sized with the new-client consultation time.
@@ -156,6 +161,7 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
             {step === 4 && (
               <button
                 onClick={() => {
+                  if (detailsDraft.current) setClientDetails(detailsDraft.current);
                   setTimeNotice(null);
                   setStep(3);
                 }}
@@ -211,6 +217,7 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
             checkSlotFitsNewClient={checkSlotFitsNewClient}
             onSlotDoesNotFit={handleSlotDoesNotFit}
             selectedTimeLabel={selectedTime ? formatTime(selectedTime) : undefined}
+            onDraftChange={handleDetailsDraft}
           />
         )}
 

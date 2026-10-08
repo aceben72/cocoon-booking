@@ -115,7 +115,15 @@ export async function POST(request: NextRequest) {
     new Date(sessionStartISO).getTime() + (sessionDurationMins + CLASS_PADDING_MINUTES) * 60_000,
   ).toISOString();
 
-  if (await hasBookingConflict(db, sessionStartISO, sessionEndISO)) {
+  // Blocked periods are skipped, as for admin bookings: Amanda's own call.
+  let clash: boolean;
+  try {
+    clash = await hasBookingConflict(db, sessionStartISO, sessionEndISO, { ignoreBlockedPeriods: true });
+  } catch (err) {
+    console.error("[admin/classes] clash check failed:", err);
+    return NextResponse.json({ error: "Couldn't check for clashes. Please try again." }, { status: 503 });
+  }
+  if (clash) {
     return NextResponse.json(
       { error: "That time slot already has an existing booking." },
       { status: 409 },

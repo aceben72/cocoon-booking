@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SERVICES } from "@/lib/services-data";
-import { fetchBusyWindows, hasConflict, type BusyWindow, type ServiceLookup } from "@/lib/slot-rules";
+import { fetchTimeList, hasConflict, type BusyQueryOptions, type ServiceLookup } from "@/lib/slot-rules";
 
 // The rules themselves live in lib/slot-rules.ts (pure, so `npm test` can load
 // it). Import them from here in app code.
@@ -8,6 +8,7 @@ export {
   BLOCKING_APPOINTMENT_STATUSES,
   CLASS_PADDING_MINUTES,
   NEW_CLIENT_EXTRA_PADDING_MINUTES,
+  SlotCheckError,
   bookingLengthMinutes,
 } from "@/lib/slot-rules";
 
@@ -15,24 +16,27 @@ export {
 export const currentServiceByName: ServiceLookup = (name) => SERVICES.find((s) => s.name === name);
 
 /**
- * Busy windows (blocking appointments + active class sessions) starting in
- * [fromISO, toISO). The time list and hasBookingConflict both read through
- * this, so they always agree on what's occupied.
+ * Offered start times for one AEST date. Reads the same busy windows
+ * (appointments, class sessions, blocked periods) as hasBookingConflict, so
+ * the time list never offers a slot the submit check would reject.
+ * Throws SlotCheckError if the day couldn't be read.
  */
-export function getBusyWindows(
+export function getTimeList(
   supabase: SupabaseClient,
-  fromISO: string,
-  toISO: string,
-  opts: { excludeAppointmentId?: string; excludeClassSessionId?: string } = {},
-): Promise<BusyWindow[]> {
-  return fetchBusyWindows(supabase, fromISO, toISO, currentServiceByName, opts);
+  p: { date: string; lengthMinutes: number; openTime: string; closeTime: string; nowMs: number },
+): Promise<string[]> {
+  return fetchTimeList(supabase, { ...p, lookup: currentServiceByName });
 }
 
 /**
  * Server-side check: does [startISO, endISO) overlap the blocked window of
  * any blocking appointment (BLOCKING_APPOINTMENT_STATUSES, end recomputed from
- * the service's current config) or any active group class session
- * (duration + CLASS_PADDING_MINUTES)?
+ * the service's current config), any active group class session
+ * (duration + CLASS_PADDING_MINUTES), or any blocked period (unless
+ * opts.ignoreBlockedPeriods)?
+ *
+ * Throws SlotCheckError if the check couldn't be done. Callers must reject
+ * the booking rather than let it through.
  *
  * This is the single source of truth for time-conflict validation and must
  * be called by every code path that writes a new appointment or class
@@ -43,7 +47,7 @@ export function hasBookingConflict(
   supabase: SupabaseClient,
   startISO: string,
   endISO: string,
-  opts: { excludeAppointmentId?: string; excludeClassSessionId?: string } = {},
+  opts: BusyQueryOptions = {},
 ): Promise<boolean> {
   return hasConflict(supabase, startISO, endISO, currentServiceByName, opts);
 }

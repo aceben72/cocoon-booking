@@ -19,20 +19,23 @@ export default function StepTime({ service, date, onSelect, onBack, isNewClient 
   const [slots, setSlots] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
 
+    // Any failure is an error state, never an empty (or full) day.
+    const fallback = "We couldn't load available times just now. Please try again.";
     fetch(`/api/availability?serviceId=${service.id}&date=${date}${isNewClient ? "&newClient=1" : ""}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        setSlots(data.slots ?? []);
+      .then(async (r) => {
+        const data = await r.json().catch(() => null);
+        if (r.ok && data && Array.isArray(data.slots)) setSlots(data.slots);
+        else setError(typeof data?.error === "string" ? data.error : fallback);
       })
-      .catch((err) => setError(err.message ?? "Failed to load time slots"))
+      .catch(() => setError(fallback))
       .finally(() => setLoading(false));
-  }, [service.id, date, isNewClient]);
+  }, [service.id, date, isNewClient, attempt]);
 
   const displayDate = formatDateDisplay(date);
 
@@ -66,8 +69,14 @@ export default function StepTime({ service, date, onSelect, onBack, isNewClient 
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-4 text-sm">
+        <div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-5 py-4 text-sm">
           {error}
+          <button
+            onClick={() => setAttempt((n) => n + 1)}
+            className="block mt-2 text-sm font-medium text-red-700 underline hover:text-red-900"
+          >
+            Try again
+          </button>
         </div>
       )}
 

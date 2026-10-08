@@ -9,9 +9,13 @@ interface Props {
   date: string;
   onSelect: (time: string) => void;
   onBack: () => void;
+  /** Size slots for a first visit (known once she's ticked it on the details step). */
+  isNewClient?: boolean;
+  /** Why she's been sent back here (e.g. her previous time was just taken). */
+  notice?: string | null;
 }
 
-export default function StepTime({ service, date, onSelect, onBack }: Props) {
+export default function StepTime({ service, date, onSelect, onBack, isNewClient = false, notice }: Props) {
   const [slots, setSlots] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +24,7 @@ export default function StepTime({ service, date, onSelect, onBack }: Props) {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/availability?serviceId=${service.id}&date=${date}`)
+    fetch(`/api/availability?serviceId=${service.id}&date=${date}${isNewClient ? "&newClient=1" : ""}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) throw new Error(data.error);
@@ -28,7 +32,7 @@ export default function StepTime({ service, date, onSelect, onBack }: Props) {
       })
       .catch((err) => setError(err.message ?? "Failed to load time slots"))
       .finally(() => setLoading(false));
-  }, [service.id, date]);
+  }, [service.id, date, isNewClient]);
 
   const displayDate = formatDateDisplay(date);
 
@@ -48,6 +52,12 @@ export default function StepTime({ service, date, onSelect, onBack }: Props) {
         Choose a time
       </h2>
       <p className="text-[#7a6f68] text-sm font-light mb-6">{displayDate}</p>
+
+      {notice && (
+        <div role="status" className="mb-6 bg-[#fdf6ea] border border-[#fbb040]/40 text-[#5a504a] rounded-xl px-5 py-4 text-sm font-light">
+          {notice}
+        </div>
+      )}
 
       {loading && (
         <div className="flex items-center justify-center py-16">

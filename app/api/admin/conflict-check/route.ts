@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { BLOCKING_APPOINTMENT_STATUSES } from "@/lib/booking-conflicts";
 
 function supabase() {
   return createClient(
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
   let apptQuery = db
     .from("appointments")
     .select("id, status")
-    .in("status", ["confirmed", "pending", "pending_payment"])
+    .in("status", [...BLOCKING_APPOINTMENT_STATUSES])
     .lt("start_datetime", endDate.toISOString())
     .gt("end_datetime",   startDate.toISOString());
   if (excludeId) apptQuery = apptQuery.neq("id", excludeId);

@@ -1,4 +1,4 @@
-import { type AvailabilityRule, type BlockedPeriod } from "@/types";
+import { type AvailabilityRule } from "@/types";
 
 // Amanda's weekly schedule (day_of_week: 0=Sun…6=Sat)
 export const DEFAULT_AVAILABILITY: AvailabilityRule[] = [
@@ -11,63 +11,19 @@ export const DEFAULT_AVAILABILITY: AvailabilityRule[] = [
   { id: "sat", day_of_week: 6, open_time: "10:00", close_time: "16:30", is_closed: false },
 ];
 
-/** Convert "HH:MM" to total minutes from midnight */
-export function timeToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + m;
-}
-
-/** Convert minutes from midnight to "HH:MM" */
-export function minutesToTime(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
-}
-
 /**
- * Get available time slots for a given date string (AEST "YYYY-MM-DD"),
- * service duration (minutes), padding (minutes), and existing appointments.
- *
- * Existing appointments are [{start: "HH:MM", end: "HH:MM"}] in AEST.
- * Blocked periods are similarly expressed as AEST ranges.
+ * Opening hours for an AEST date ("YYYY-MM-DD"), or null if closed that day.
+ * Slot generation itself lives in lib/slot-rules.ts (offeredSlots).
  */
-export function getAvailableSlots(
+export function openingHoursFor(
   dateStr: string,
-  durationMins: number,
-  paddingMins: number,
-  existingBookings: { start: string; end: string }[],
-  blockedPeriods: { start: string; end: string }[],
   availabilityRules: AvailabilityRule[] = DEFAULT_AVAILABILITY,
-): string[] {
+): { openTime: string; closeTime: string } | null {
   const date = new Date(dateStr + "T00:00:00");
   const dow = date.getDay(); // JS getDay: 0=Sun
-
   const rule = availabilityRules.find((r) => r.day_of_week === dow);
-  if (!rule || rule.is_closed) return [];
-
-  const openMins = timeToMinutes(rule.open_time);
-  const closeMins = timeToMinutes(rule.close_time);
-  const totalSlotMins = durationMins + paddingMins;
-
-  const slots: string[] = [];
-
-  // Generate 30-minute increment slots
-  for (let start = openMins; start + totalSlotMins <= closeMins; start += 30) {
-    const slotEnd = start + totalSlotMins;
-    const startStr = minutesToTime(start);
-    const endStr = minutesToTime(slotEnd);
-
-    const overlaps = (a: string, b: string, c: string, d: string) =>
-      timeToMinutes(a) < timeToMinutes(d) && timeToMinutes(c) < timeToMinutes(b);
-
-    const blocked =
-      existingBookings.some((b) => overlaps(startStr, endStr, b.start, b.end)) ||
-      blockedPeriods.some((b) => overlaps(startStr, endStr, b.start, b.end));
-
-    if (!blocked) slots.push(startStr);
-  }
-
-  return slots;
+  if (!rule || rule.is_closed) return null;
+  return { openTime: rule.open_time, closeTime: rule.close_time };
 }
 
 /**

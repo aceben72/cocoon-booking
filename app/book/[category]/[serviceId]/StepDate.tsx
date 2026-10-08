@@ -8,6 +8,8 @@ import { toAESTDateString } from "@/lib/utils";
 interface Props {
   service: Service;
   onSelect: (date: string) => void;
+  /** Size slots for a first visit (known once she's ticked it on the details step). */
+  isNewClient?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -16,7 +18,7 @@ const MONTH_NAMES = [
 ];
 const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-export default function StepDate({ service, onSelect }: Props) {
+export default function StepDate({ service, onSelect, isNewClient = false }: Props) {
   const today = useMemo(() => new Date(), []);
   const todayStr = toAESTDateString(today);
 
@@ -57,7 +59,7 @@ export default function StepDate({ service, onSelect }: Props) {
       return;
     }
     let cancelled = false;
-    fetch(`/api/availability?serviceId=${service.id}&dates=${candidateDates.join(",")}`)
+    fetch(`/api/availability?serviceId=${service.id}&dates=${candidateDates.join(",")}${isNewClient ? "&newClient=1" : ""}`)
       .then((res) => res.json())
       .then((data: { availability?: Record<string, string[]> }) => {
         if (cancelled || !data.availability) return;
@@ -73,7 +75,7 @@ export default function StepDate({ service, onSelect }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [service.id, candidateDates]);
+  }, [service.id, candidateDates, isNewClient]);
 
   const canGoPrev = calYear > today.getFullYear() || calMonth > today.getMonth();
   const canGoNext = useMemo(() => {

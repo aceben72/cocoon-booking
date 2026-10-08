@@ -6,7 +6,7 @@ import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
 import { sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
-import { hasBookingConflict } from "@/lib/booking-conflicts";
+import { hasBookingConflict, bookingLengthMinutes } from "@/lib/booking-conflicts";
 import { computeBookingPricing } from "@/lib/booking-pricing";
 import { onlineBookingPaymentRows } from "@/lib/complete-payment";
 import { getLoyaltyStatusByEmail, isLoyaltyServiceSlug, LOYALTY_REWARD_CENTS } from "@/lib/loyalty";
@@ -64,24 +64,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid Australian mobile number" }, { status: 400 });
   }
 
-  // Compute UTC datetimes.
-  // New clients get an extra 15 min added to the slot so the initial
-  // consultation doesn't push into the next booking.
-  const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
-  // Mother & Daughter class does not get new-client consultation padding
-  const skipNewClientPadding = service.category === "mother-daughter";
+  // Compute UTC datetimes. Same length rule as the time list
+  // (GET /api/availability?newClient=1), incl. the new-client consultation time.
   const startISO = aestToUTC(date, time);
-  const totalMins =
-    service.duration_minutes +
-    service.padding_minutes +
-    (!skipNewClientPadding && client.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
+  const totalMins = bookingLengthMinutes(service, !!client.is_new_client);
   const endDate = new Date(new Date(startISO).getTime() + totalMins * 60 * 1000);
   const endISO = endDate.toISOString();
 
   // Check 2h minimum notice
   const now = new Date();
   if (new Date(startISO).getTime() - now.getTime() < 2 * 60 * 60 * 1000) {
-    return NextResponse.json({ error: "Bookings require at least 2 hours notice" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Bookings require at least 2 hours notice", code: "slot_unavailable" },
+      { status: 400 },
+    );
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -115,7 +111,7 @@ export async function POST(request: NextRequest) {
   // ── Double-booking check ──────────────────────────────────────────────
   if (await hasBookingConflict(supabase, startISO, endISO)) {
     return NextResponse.json(
-      { error: "This time slot is no longer available. Please choose another." },
+      { error: "This time slot is no longer available. Please choose another.", code: "slot_unavailable" },
       { status: 409 },
     );
   }

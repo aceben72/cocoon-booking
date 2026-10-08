@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendRescheduleNotification, sendAppointmentCancellation, sendPendingPaymentCancellation } from "@/lib/notifications";
 import { clearNewClientFlagIfReturning, onAppointmentCompleted } from "@/lib/appointment-completion";
+import { bookingLengthMinutes } from "@/lib/booking-conflicts";
 
 function supabase() {
   return createClient(
@@ -41,18 +42,18 @@ export async function PUT(
 
   const svc = existing.services as unknown as { name: string; duration_minutes: number; padding_minutes: number; category: string } | null;
   const rescheduleClient = existing.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string; is_new_client: boolean } | null;
-  const durationMinutes = svc?.duration_minutes ?? 60;
-  const paddingMinutes = svc?.padding_minutes ?? 30;
 
-  // Mirrors the total-slot-length formula used when the appointment was first
-  // created (app/api/bookings/route.ts) so a reschedule doesn't shrink the
-  // blocked window back down to bare duration_minutes.
-  const NEW_CLIENT_EXTRA_PADDING_MINUTES = 15;
-  const skipNewClientPadding = svc?.category === "mother-daughter";
-  const totalMins =
-    durationMinutes +
-    paddingMinutes +
-    (!skipNewClientPadding && rescheduleClient?.is_new_client ? NEW_CLIENT_EXTRA_PADDING_MINUTES : 0);
+  // Same total-slot-length rule used when the appointment was first created
+  // (app/api/bookings/route.ts) so a reschedule doesn't shrink the blocked
+  // window back down to bare duration_minutes.
+  const totalMins = bookingLengthMinutes(
+    {
+      duration_minutes: svc?.duration_minutes ?? 60,
+      padding_minutes: svc?.padding_minutes ?? 30,
+      category: svc?.category ?? "",
+    },
+    !!rescheduleClient?.is_new_client,
+  );
 
   const startISO = new Date(`${date}T${time}:00+10:00`).toISOString();
   const endISO   = new Date(new Date(startISO).getTime() + totalMins * 60_000).toISOString();

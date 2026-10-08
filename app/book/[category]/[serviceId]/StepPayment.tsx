@@ -28,6 +28,8 @@ interface Props {
   client: ClientDetailsForm;
   onSuccess: (result: BookingResult) => void;
   onError: (msg: string) => void;
+  /** The server rejected the time itself (taken, or under 2h notice). Nothing was charged. */
+  onSlotUnavailable: () => void;
   onBack: () => void;
 }
 
@@ -57,7 +59,7 @@ const SQUARE_SDK_URL =
     ? "https://web.squarecdn.com/v1/square.js"
     : "https://sandbox.web.squarecdn.com/v1/square.js";
 
-export default function StepPayment({ service, date, time, client, onSuccess, onError, onBack }: Props) {
+export default function StepPayment({ service, date, time, client, onSuccess, onError, onSlotUnavailable, onBack }: Props) {
   // Only certain categories offer the deposit option; all others pay in full.
   const hasDepositOption = serviceHasDepositOption(service);
   const DEPOSIT_CENTS = service.deposit_cents ?? DEFAULT_DEPOSIT_CENTS;
@@ -347,6 +349,11 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
       const data = await response.json();
 
       if (!response.ok) {
+        // The clash/notice checks run before Square, so the card wasn't charged.
+        if (data.code === "slot_unavailable") {
+          onSlotUnavailable();
+          return;
+        }
         onError(data.error ?? "Booking failed. Please try again.");
         setSubmitting(false);
         return;

@@ -41,17 +41,59 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
   const [clientDetails, setClientDetails] = useState<ClientDetailsForm | null>(null);
   const [bookingResult, setBookingResult] = useState<BookingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Shown on the time step when she's been sent back to pick another time.
+  const [timeNotice, setTimeNotice] = useState<string | null>(null);
+
+  // Known once she's ticked "first visit". From then on the date and time
+  // lists are sized with the new-client consultation time.
+  const isNewClient = clientDetails?.is_new_client ?? false;
 
   const handleDateSelect = useCallback((date: string) => {
     setSelectedDate(date);
     setSelectedTime(null);
+    setTimeNotice(null);
     setStep(3);
   }, []);
 
   const handleTimeSelect = useCallback((time: string) => {
     setSelectedTime(time);
+    setTimeNotice(null);
     setStep(4);
   }, []);
+
+  // Back to the times for the same day (refetched on mount), keeping her details.
+  const backToTimes = useCallback((notice: string, details?: ClientDetailsForm) => {
+    if (details) setClientDetails(details);
+    setError(null);
+    setTimeNotice(notice);
+    setSelectedTime(null);
+    setStep(3);
+  }, []);
+
+  const checkSlotFitsNewClient = useCallback(async (): Promise<boolean> => {
+    if (!selectedDate || !selectedTime) return true;
+    try {
+      const res = await fetch(`/api/availability?serviceId=${service.id}&date=${selectedDate}&newClient=1`);
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.slots)) return true; // can't tell; the server re-checks
+      return (data.slots as string[]).includes(selectedTime);
+    } catch {
+      return true;
+    }
+  }, [service.id, selectedDate, selectedTime]);
+
+  const handleSlotDoesNotFit = useCallback((details: ClientDetailsForm) => {
+    backToTimes(
+      `Your first visit includes an extra 15 minutes for a consultation with Amanda, so ${selectedTime ? formatTime(selectedTime) : "that time"} no longer fits. Please choose another time. Your details are saved.`,
+      details,
+    );
+  }, [backToTimes, selectedTime]);
+
+  const handleSlotUnavailable = useCallback(() => {
+    backToTimes(
+      `Sorry, ${selectedTime ? formatTime(selectedTime) : "that time"} is no longer available. You haven't been charged. Please choose another time. Your details are saved.`,
+    );
+  }, [backToTimes, selectedTime]);
 
   const handleDetailsSubmit = useCallback((details: ClientDetailsForm) => {
     setClientDetails(details);
@@ -113,7 +155,10 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
             </div>
             {step === 4 && (
               <button
-                onClick={() => setStep(3)}
+                onClick={() => {
+                  setTimeNotice(null);
+                  setStep(3);
+                }}
                 className="text-xs text-[#9a8f87] hover:text-[#044e77] transition-colors"
               >
                 Change
@@ -140,6 +185,7 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
           <StepDate
             service={service}
             onSelect={handleDateSelect}
+            isNewClient={isNewClient}
           />
         )}
 
@@ -149,13 +195,22 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
             date={selectedDate}
             onSelect={handleTimeSelect}
             onBack={() => setStep(2)}
+            isNewClient={isNewClient}
+            notice={timeNotice}
           />
         )}
 
         {step === 4 && (
           <StepDetails
             onSubmit={handleDetailsSubmit}
-            onBack={() => setStep(3)}
+            onBack={(draft) => {
+              setClientDetails(draft);
+              setStep(3);
+            }}
+            initial={clientDetails}
+            checkSlotFitsNewClient={checkSlotFitsNewClient}
+            onSlotDoesNotFit={handleSlotDoesNotFit}
+            selectedTimeLabel={selectedTime ? formatTime(selectedTime) : undefined}
           />
         )}
 
@@ -167,6 +222,7 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
             client={clientDetails}
             onSuccess={handlePaymentSuccess}
             onError={handleError}
+            onSlotUnavailable={handleSlotUnavailable}
             onBack={() => setStep(4)}
           />
         )}

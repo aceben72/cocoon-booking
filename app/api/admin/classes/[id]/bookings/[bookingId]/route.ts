@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendClassBookingCancellation } from "@/lib/notifications";
 
@@ -52,11 +52,13 @@ export async function PATCH(
   if (sessionRes.data) {
     const client = bookingRes.data.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string } | null;
     if (client?.email) {
-      sendClassBookingCancellation({
-        className: sessionRes.data.title as string,
-        startISO:  sessionRes.data.start_datetime as string,
-        client,
-      }).catch(console.error);
+      after(() =>
+        sendClassBookingCancellation({
+          className: sessionRes.data.title as string,
+          startISO:  sessionRes.data.start_datetime as string,
+          client,
+        }).catch(console.error),
+      );
     }
   }
 

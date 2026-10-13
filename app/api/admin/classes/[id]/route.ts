@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendClassBookingCancellation, upsertMailchimpContact } from "@/lib/notifications";
 
@@ -213,11 +213,13 @@ export async function PATCH(
   for (const booking of bookings ?? []) {
     const client = booking.clients as unknown as { first_name: string; last_name: string; email: string; mobile: string } | null;
     if (client?.email) {
-      sendClassBookingCancellation({
-        className: session.title as string,
-        startISO:  session.start_datetime as string,
-        client,
-      }).catch(console.error);
+      after(() =>
+        sendClassBookingCancellation({
+          className: session.title as string,
+          startISO:  session.start_datetime as string,
+          client,
+        }).catch(console.error),
+      );
     }
   }
 

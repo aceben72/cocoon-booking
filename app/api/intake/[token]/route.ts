@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "crypto";
 
@@ -120,22 +120,26 @@ export async function POST(
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
     const adminUrl = `${appUrl}/admin/intake/${form.id}`;
     const { sendIntakeFormNotification } = await import("@/lib/notifications");
-    sendIntakeFormNotification({
-      clientName: `${client.first_name} ${client.last_name}`,
-      appointmentISO: appointment.start_datetime,
-      serviceName: appointment.services?.name ?? "Facial",
-      intakeAdminUrl: adminUrl,
-    }).catch((err) => console.error("[intake/token] Amanda notification failed:", err));
+    after(() =>
+      sendIntakeFormNotification({
+        clientName: `${client.first_name} ${client.last_name}`,
+        appointmentISO: appointment.start_datetime,
+        serviceName: appointment.services?.name ?? "Facial",
+        intakeAdminUrl: adminUrl,
+      }).catch((err) => console.error("[intake/token] Amanda notification failed:", err)),
+    );
   }
 
   // Mailchimp opt-in (fire & forget)
   const emailListOptIn = (body.responses as Record<string, unknown>).email_list;
   if (emailListOptIn === "Yes" && client?.email) {
-    addToMailchimp({
-      email: client.email,
-      firstName: client.first_name,
-      lastName: client.last_name,
-    }).catch((err) => console.error("[intake/token] Mailchimp opt-in failed:", err));
+    after(() =>
+      addToMailchimp({
+        email: client.email,
+        firstName: client.first_name,
+        lastName: client.last_name,
+      }).catch((err) => console.error("[intake/token] Mailchimp opt-in failed:", err)),
+    );
   }
 
   return NextResponse.json({ success: true });

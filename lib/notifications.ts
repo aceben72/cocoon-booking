@@ -1,5 +1,6 @@
 // Shared notification helpers for both appointments and class bookings.
-// All sends are fire-and-forget — callers should .catch(console.error).
+// Callers must not leave these as un-awaited promises: on Vercel the function can
+// freeze before the requests finish. Wrap in after() (next/server) or await them.
 
 export interface NotifyClient {
   first_name: string;

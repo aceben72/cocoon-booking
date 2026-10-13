@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendRescheduleNotification, sendAppointmentCancellation, sendPendingPaymentCancellation } from "@/lib/notifications";
 import { clearNewClientFlagIfReturning, onAppointmentCompleted } from "@/lib/appointment-completion";
@@ -67,11 +67,13 @@ export async function PUT(
   // Send rescheduled notification (fire-and-forget)
   const client = rescheduleClient;
   if (client?.email && client?.mobile) {
-    sendRescheduleNotification({
-      serviceName: svc?.name ?? "your appointment",
-      newStartISO: startISO,
-      client,
-    }).catch(console.error);
+    after(() =>
+      sendRescheduleNotification({
+        serviceName: svc?.name ?? "your appointment",
+        newStartISO: startISO,
+        client,
+      }).catch(console.error),
+    );
   }
 
   return NextResponse.json({ id, startISO, endISO });
@@ -149,18 +151,22 @@ export async function PATCH(
     const svcData    = apptDetails.services as unknown as { name: string; duration_minutes: number } | null;
     if (apptDetails.status === "pending_payment") {
       if (clientData && svcData?.name) {
-        sendPendingPaymentCancellation({
+        after(() =>
+          sendPendingPaymentCancellation({
+            serviceName: svcData.name,
+            startISO:    apptDetails.start_datetime,
+            client:      clientData,
+          }).catch(console.error),
+        );
+      }
+    } else if (clientData?.email && clientData?.mobile && svcData?.name) {
+      after(() =>
+        sendAppointmentCancellation({
           serviceName: svcData.name,
           startISO:    apptDetails.start_datetime,
           client:      clientData,
-        }).catch(console.error);
-      }
-    } else if (clientData?.email && clientData?.mobile && svcData?.name) {
-      sendAppointmentCancellation({
-        serviceName: svcData.name,
-        startISO:    apptDetails.start_datetime,
-        client:      clientData,
-      }).catch(console.error);
+        }).catch(console.error),
+      );
     }
   }
 

@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { upsertMailchimpContact } from "@/lib/notifications";
 
@@ -46,14 +47,25 @@ export async function onAppointmentCompleted(db: SupabaseClient, appointmentId: 
     // mapping key plus the base "makeup-class" tag — group classes get that
     // base tag from the cron job in app/api/cron/reminders, but appointments
     // are never seen by that cron.
+    //
+    // Scheduled with after() so Vercel keeps the function alive until the
+    // Mailchimp requests finish (an un-awaited promise was frozen mid-flight
+    // and silently dropped), without slowing the admin response. A failure
+    // is logged but never affects the completion itself.
     const isPersonalClass = svcData.name === "Personal Make Up Class";
-    upsertMailchimpContact({
-      email: clientData.email,
+    const email = clientData.email;
+    const contact = {
+      email,
       firstName: clientData.first_name,
       lastName: clientData.last_name,
       serviceCategory: isPersonalClass ? "personal-make-up-class" : svcData.category,
       isNewClient: clientData.is_new_client,
       extraTags: isPersonalClass ? ["makeup-class"] : undefined,
-    }).catch(console.error);
+    };
+    after(() =>
+      upsertMailchimpContact(contact).catch((err) =>
+        console.error(`[completion] Mailchimp upsert/tag failed for appointment ${appointmentId} (${email}):`, err),
+      ),
+    );
   }
 }

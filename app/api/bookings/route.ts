@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile, hasDepositOption, serviceCashSavingText } from "@/lib/utils";
@@ -481,11 +481,13 @@ export async function POST(request: NextRequest) {
 
   // ── Mailchimp: tag facial-booked on creation ─────────────────────────
   if (service.category === "facials") {
-    tagMailchimpFacialBooked({
-      email: client.email,
-      firstName: client.first_name,
-      lastName: client.last_name,
-    }).catch((err) => console.error("[bookings] mailchimp facial-booked tag failed:", err));
+    after(() =>
+      tagMailchimpFacialBooked({
+        email: client.email,
+        firstName: client.first_name,
+        lastName: client.last_name,
+      }).catch((err) => console.error("[bookings] mailchimp facial-booked tag failed:", err)),
+    );
   }
 
   // ── Send confirmation notifications ──────────────────────────────────

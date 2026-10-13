@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID, randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
@@ -207,35 +207,41 @@ export async function POST(request: NextRequest) {
 
   // ── Mailchimp: tag facial-booked on creation ─────────────────────────
   if (service.category === "facials") {
-    tagMailchimpFacialBooked({
-      email,
-      firstName,
-      lastName,
-    }).catch((err) => console.error("[admin/bookings] mailchimp facial-booked tag failed:", err));
+    after(() =>
+      tagMailchimpFacialBooked({
+        email,
+        firstName,
+        lastName,
+      }).catch((err) => console.error("[admin/bookings] mailchimp facial-booked tag failed:", err)),
+    );
   }
 
   if (!isPaymentLink) {
     // Confirmed immediately (no charge, or pay on the day) — send standard confirmation email/SMS
-    sendAppointmentConfirmation({
-      serviceName:     service.name,
-      durationMinutes: service.duration_minutes,
-      priceCents:      amounts.amountCents,
-      amountPaidCents: 0,
-      startISO,
-      intakeFormUrl,
-      isNewClient:     false,
-      client: { first_name: firstName, last_name: lastName, email, mobile },
-    }).catch(console.error);
+    after(() =>
+      sendAppointmentConfirmation({
+        serviceName:     service.name,
+        durationMinutes: service.duration_minutes,
+        priceCents:      amounts.amountCents,
+        amountPaidCents: 0,
+        startISO,
+        intakeFormUrl,
+        isNewClient:     false,
+        client: { first_name: firstName, last_name: lastName, email, mobile },
+      }).catch(console.error),
+    );
 
     // Admin notification to Amanda
-    sendAdminBookingNotification({
-      serviceName:     service.name,
-      durationMinutes: service.duration_minutes,
-      startISO,
-      isNewClient:     !existingClient,
-      notes:           null,
-      client:          { first_name: firstName, last_name: lastName, email, mobile },
-    }).catch(console.error);
+    after(() =>
+      sendAdminBookingNotification({
+        serviceName:     service.name,
+        durationMinutes: service.duration_minutes,
+        startISO,
+        isNewClient:     !existingClient,
+        notes:           null,
+        client:          { first_name: firstName, last_name: lastName, email, mobile },
+      }).catch(console.error),
+    );
 
     return NextResponse.json({
       appointmentId: appointment.id,
@@ -249,12 +255,14 @@ export async function POST(request: NextRequest) {
   // Paid flow — send payment request
   const paymentUrl = `${appUrl}/pay/${appointment.payment_link_token}`;
 
-  sendPaymentRequest({
-    serviceName: service.name,
-    startISO,
-    paymentUrl,
-    client: { first_name: firstName, last_name: lastName, email, mobile },
-  }).catch(console.error);
+  after(() =>
+    sendPaymentRequest({
+      serviceName: service.name,
+      startISO,
+      paymentUrl,
+      client: { first_name: firstName, last_name: lastName, email, mobile },
+    }).catch(console.error),
+  );
 
   return NextResponse.json({
     appointmentId: appointment.id,

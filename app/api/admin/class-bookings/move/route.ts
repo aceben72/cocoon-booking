@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendClassBookingMoved } from "@/lib/notifications";
 
@@ -138,11 +138,13 @@ export async function POST(request: NextRequest) {
   } | null;
 
   if (client?.email) {
-    sendClassBookingMoved({
-      className:   targetSession.title as string,
-      newStartISO: targetSession.start_datetime as string,
-      client,
-    }).catch((err) => console.error("[class-bookings/move] notification failed:", err));
+    after(() =>
+      sendClassBookingMoved({
+        className:   targetSession.title as string,
+        newStartISO: targetSession.start_datetime as string,
+        client,
+      }).catch((err) => console.error("[class-bookings/move] notification failed:", err)),
+    );
   }
 
   return NextResponse.json({

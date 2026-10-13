@@ -40,6 +40,12 @@ export async function onAppointmentCompleted(db: SupabaseClient, appointmentId: 
 
   if (appt.client_id) await clearNewClientFlagIfReturning(db, appt.client_id as string, appointmentId);
 
+  // Admin-only services (e.g. Treatment Plan Facial) have no Mailchimp journey.
+  if (svcData?.category === "admin-only") {
+    console.info(`[completion] skipping Mailchimp for admin-only service "${svcData.name}" (appointment ${appointmentId})`);
+    return;
+  }
+
   // Mailchimp upsert + tag on completion
   if (clientData?.email && svcData?.category) {
     // Personal Make Up Class is booked as an appointment (category "make-up",

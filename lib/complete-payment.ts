@@ -30,7 +30,8 @@ export interface CompletionInput {
   loyaltyDiscountCents: number;   // appointments.loyalty_discount_cents (already applied)
   cashDiscountCents: number;      // appointments.cash_discount_cents (already applied)
   amountPaidCents: number;        // appointments.amount_paid_cents
-  servicePriceCents: number;      // services.price_cents (current card price)
+  serviceName?: string;           // services.name, for EARLIER_CARD_PRICES
+  servicePriceCents: number;     // services.price_cents (current card price)
   serviceCashPriceCents: number | null; // services.cash_price_cents (null = no cash price)
   loyaltyRewardDueCents: number;  // from getLoyaltyRewardForAppointment when due, else 0
 }
@@ -49,15 +50,29 @@ export interface CompletionResult {
 }
 
 /**
- * The cash/PayID discount for this booking: card price − cash price, but only
- * while the booking was made at the current card price. A booking made before
- * the 1 Oct price change has amount_cents = the old price (which is today's
- * cash price), so amount_cents ≠ services.price_cents and no discount applies.
+ * Card/cash price pairs a service had AFTER the 1 Oct 2026 change but no
+ * longer has, keyed by services.name. Bookings snapshot the card price in
+ * amount_cents, so a booking made at one of these keeps that pair's cash
+ * discount. Never list a pre-1 Oct price here: those had no cash discount.
  */
-export function cashDiscountAvailable(input: Pick<CompletionInput, "amountCents" | "servicePriceCents" | "serviceCashPriceCents">): number {
-  if (input.serviceCashPriceCents == null) return 0;
-  if (input.amountCents !== input.servicePriceCents) return 0;
-  return Math.max(0, input.servicePriceCents - input.serviceCashPriceCents);
+export const EARLIER_CARD_PRICES: Record<string, { priceCents: number; cashPriceCents: number }[]> = {
+  // 22 Oct 2026: $134 / $130 → $139 / $135
+  "Professional Make-Up Application": [{ priceCents: 13400, cashPriceCents: 13000 }],
+};
+
+/**
+ * The cash/PayID discount for this booking: card price − cash price at the
+ * card price the booking was made at — today's (services.price_cents) or an
+ * earlier post-1 Oct one (EARLIER_CARD_PRICES). Anything else, e.g. a booking
+ * made before the 1 Oct price change, gets no discount.
+ */
+export function cashDiscountAvailable(input: Pick<CompletionInput, "amountCents" | "serviceName" | "servicePriceCents" | "serviceCashPriceCents">): number {
+  if (input.amountCents === input.servicePriceCents) {
+    if (input.serviceCashPriceCents == null) return 0;
+    return Math.max(0, input.servicePriceCents - input.serviceCashPriceCents);
+  }
+  const earlier = (EARLIER_CARD_PRICES[input.serviceName ?? ""] ?? []).find((p) => p.priceCents === input.amountCents);
+  return earlier ? Math.max(0, earlier.priceCents - earlier.cashPriceCents) : 0;
 }
 
 /**

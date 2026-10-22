@@ -64,6 +64,7 @@ async function load(db: SupabaseClient, id: string): Promise<Loaded | null> {
       loyaltyDiscountCents: appt.loyalty_discount_cents as number,
       cashDiscountCents: appt.cash_discount_cents as number,
       amountPaidCents: appt.amount_paid_cents as number,
+      serviceName: svc?.name,
       servicePriceCents: svc?.price_cents ?? 0,
       serviceCashPriceCents: svc?.cash_price_cents ?? null,
       loyaltyRewardDueCents,
@@ -87,11 +88,11 @@ export async function GET(
   ) as Record<CompleteChoice, CompletionResult>;
 
   return NextResponse.json({
+    ...loaded.input,
     status: loaded.status,
     serviceName: loaded.serviceName,
     clientName: loaded.clientName,
     startISO: loaded.startISO,
-    ...loaded.input,
     cashDiscountAvailableCents: cashDiscountAvailable(loaded.input),
     payments: loaded.payments,
     options,

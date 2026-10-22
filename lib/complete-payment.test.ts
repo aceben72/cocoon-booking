@@ -157,6 +157,39 @@ test("booked before 1 Oct (old price) → no cash discount", () => {
   assert.equal(r.cashDiscountCents, 0);
 });
 
+// Pro Make-Up: $134/$130 until 22 Oct 2026, now $139/$135; $130 card before 1 Oct
+const PRO_MAKEUP = { serviceName: "Professional Make-Up Application", servicePriceCents: 13900, serviceCashPriceCents: 13500 };
+
+test("Pro Make-Up booked at $134 (before 22 Oct) → Paid cash = $130", () => {
+  const r = computeCompletion(base({ amountCents: 13400, ...PRO_MAKEUP }), "cash");
+  assert.equal(r.cashDiscountCents, 400);
+  assert.deepEqual(r.payment, { method: "cash", amountCents: 13000 });
+  // with the $50 online deposit already paid
+  const d = computeCompletion(base({ amountCents: 13400, amountPaidCents: 5000, ...PRO_MAKEUP }), "payid");
+  assert.deepEqual(d.payment, { method: "payid_bank", amountCents: 8000 });
+});
+
+test("Pro Make-Up booked at $139 → Paid cash = $135; card = $139", () => {
+  const r = computeCompletion(base({ amountCents: 13900, ...PRO_MAKEUP }), "cash");
+  assert.equal(r.cashDiscountCents, 400);
+  assert.deepEqual(r.payment, { method: "cash", amountCents: 13500 });
+  const c = computeCompletion(base({ amountCents: 13900, ...PRO_MAKEUP }), "card");
+  assert.deepEqual(c.payment, { method: "card_square", amountCents: 13900 });
+  // $50 deposit → $85 cash / $89 card on the day
+  assert.deepEqual(computeCompletion(base({ amountCents: 13900, amountPaidCents: 5000, ...PRO_MAKEUP }), "cash").payment, { method: "cash", amountCents: 8500 });
+  assert.deepEqual(computeCompletion(base({ amountCents: 13900, amountPaidCents: 5000, ...PRO_MAKEUP }), "card").payment, { method: "card_square", amountCents: 8900 });
+});
+
+test("Pro Make-Up booked before 1 Oct ($130) → still no cash discount", () => {
+  assert.equal(cashDiscountAvailable({ amountCents: 13000, ...PRO_MAKEUP }), 0);
+  const r = computeCompletion(base({ amountCents: 13000, ...PRO_MAKEUP }), "cash");
+  assert.deepEqual(r.payment, { method: "cash", amountCents: 13000 });
+});
+
+test("an earlier price of one service doesn't give a discount on another", () => {
+  assert.equal(cashDiscountAvailable({ amountCents: 13400, serviceName: "Personal Make Up Class", servicePriceCents: 16400, serviceCashPriceCents: 15900 }), 0);
+});
+
 test("no cash price (Basic LED) → no cash discount", () => {
   assert.equal(cashDiscountAvailable({ amountCents: 4700, servicePriceCents: 4700, serviceCashPriceCents: null }), 0);
 });

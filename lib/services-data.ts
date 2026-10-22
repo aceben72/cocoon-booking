@@ -54,7 +54,7 @@ export const SERVICES: Service[] = [
   { id: "deluxe-led", category: "led-light-treatments", name: "Deluxe LED Treatment", duration_minutes: 40, padding_minutes: 30, price_cents: 6100, cash_price_cents: 5900, active: true },
 
   // Make-Up
-  { id: "professional-makeup", category: "make-up", name: "Professional Make-Up Application", duration_minutes: 75, padding_minutes: 45, price_cents: 13400, cash_price_cents: 13000, active: true },
+  { id: "professional-makeup", category: "make-up", name: "Professional Make-Up Application", duration_minutes: 75, padding_minutes: 45, price_cents: 13900, cash_price_cents: 13500, active: true },
   { id: "makeup-class", category: "make-up", name: "Personal Make Up Class", duration_minutes: 90, padding_minutes: 30, price_cents: 16400, cash_price_cents: 15900, active: true },
 
   // Treatment Plans (client-facing)

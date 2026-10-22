@@ -1160,7 +1160,7 @@ export function AppointmentTable({
         );
 
         return (
-        <div className="bg-white rounded-xl border border-[#f0ebe4] overflow-hidden">
+        <div className="bg-white rounded-xl border border-[#f0ebe4] overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-[#f8f5f2] border-b border-[#f0ebe4]">
               <tr>
@@ -1422,7 +1422,7 @@ export function AppointmentTable({
                             return null;
                           })()}
                         </div>
-                        <div className="text-[#7a6f68] text-xs">{appt.clients?.email}</div>
+                        <div className="text-[#7a6f68] text-xs break-all">{appt.clients?.email}</div>
                       </td>
                       <td className="px-4 py-3 text-[#1a1a1a]">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -1463,7 +1463,7 @@ export function AppointmentTable({
                         )}
                       </td>
                       <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                           {appt.status !== "cancelled" && (
                             <button
                               onClick={() => {

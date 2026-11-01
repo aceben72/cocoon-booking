@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getAppointmentLoyaltyMap, getLoyaltyStatus, LOYALTY_FACIALS_REQUIRED, type AppointmentLoyalty, type LoyaltyStatus } from "@/lib/loyalty";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
 import { LoyaltyToggle } from "./LoyaltyToggle";
+import { ClientContactEditor } from "@/components/ClientContactEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -234,24 +235,13 @@ export default async function ClientDetailPage({
                 </span>
               )}
             </div>
-            <div className="space-y-1 text-sm text-[#5a504a]">
-              <p>
-                <span className="text-[#9a8f87]">Email</span>{" "}
-                <a href={`mailto:${client.email}`} className="hover:text-[#044e77] transition-colors">
-                  {client.email}
-                </a>
-              </p>
-              <p>
-                <span className="text-[#9a8f87]">Mobile</span>{" "}
-                <a href={`tel:${client.mobile}`} className="hover:text-[#044e77] transition-colors">
-                  {client.mobile}
-                </a>
-              </p>
-              <p>
-                <span className="text-[#9a8f87]">Member since</span>{" "}
-                {formatDate(client.created_at)}
-              </p>
+            <div className="max-w-md">
+              <ClientContactEditor client={client} />
             </div>
+            <p className="mt-2 text-sm text-[#5a504a]">
+              <span className="text-[#9a8f87]">Member since</span>{" "}
+              {formatDate(client.created_at)}
+            </p>
             {client.notes && (
               <div className="mt-3 text-sm text-[#5a504a] bg-[#f8f5f2] rounded-lg px-3 py-2 border border-[#e8e0d8]">
                 <span className="text-[#9a8f87] text-xs uppercase tracking-wider font-medium block mb-0.5">Notes</span>

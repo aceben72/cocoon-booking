@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { NewBookingForm } from "./appointments/NewBookingForm";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
 import { CompletePaymentPanel } from "@/components/CompletePaymentPanel";
+import { ClientContactEditor } from "@/components/ClientContactEditor";
 import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
 import { bookingLengthMinutes } from "@/lib/slot-rules";
 
@@ -11,12 +12,13 @@ import { bookingLengthMinutes } from "@/lib/slot-rules";
 
 interface CalendarAppointment {
   id: string;
+  client_id: string;
   start_datetime: string;
   end_datetime: string;
   status: string;
   notes: string | null;
   services: { name: string; category: string; duration_minutes: number; padding_minutes: number } | null;
-  clients: { first_name: string; last_name: string; is_new_client?: boolean } | null;
+  clients: { first_name: string; last_name: string; email: string; mobile: string | null; is_new_client?: boolean } | null;
   loyalty?: AppointmentLoyalty | null;
 }
 
@@ -1048,6 +1050,20 @@ export default function MobileCalendar() {
                 </div>
               )}
             </div>
+
+            {selectedAppt.clients && (
+              <div className="border-t border-[#f0ebe4] pt-4 mb-5">
+                <ClientContactEditor
+                  key={selectedAppt.id}
+                  client={{ id: selectedAppt.client_id, ...selectedAppt.clients }}
+                  onSaved={(c) => {
+                    const clients = { ...selectedAppt.clients!, first_name: c.first_name, last_name: c.last_name, email: c.email, mobile: c.mobile };
+                    setSelectedAppt({ ...selectedAppt, clients });
+                    fetchDay(selectedDate);
+                  }}
+                />
+              </div>
+            )}
 
             {selectedAppt.status !== "cancelled" && (
               <button

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ClientDetailsForm } from "@/types";
-import { isValidAustralianMobile } from "@/lib/utils";
+import { isValidAustralianMobile, isValidEmail } from "@/lib/utils";
 
 interface Props {
   onSubmit: (details: ClientDetailsForm) => void;
@@ -51,7 +51,7 @@ export default function StepDetails({
     const newErrors: typeof errors = {};
     if (!form.first_name.trim()) newErrors.first_name = "First name is required";
     if (!form.last_name.trim()) newErrors.last_name = "Last name is required";
-    if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+    if (!form.email.trim() || !isValidEmail(form.email))
       newErrors.email = "Valid email address is required";
     if (!form.mobile.trim() || !isValidAustralianMobile(form.mobile))
       newErrors.mobile = "Enter a valid Australian mobile (e.g. 0412 345 678)";

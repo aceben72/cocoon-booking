@@ -76,6 +76,22 @@ export function isValidAustralianMobile(mobile: string): boolean {
   return normaliseMobile(mobile) !== null;
 }
 
+/** normaliseMobile, but only accepts a real mobile (+614…) — landlines can't get SMS. */
+export function normaliseSmsMobile(raw: string): string | null {
+  const mobile = normaliseMobile(raw);
+  return mobile && /^\+614\d{8}$/.test(mobile) ? mobile : null;
+}
+
+/** Basic email shape check — same rule the booking form has always used. */
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/** Stand-in addresses made for admin bookings with no real email. */
+export function isPlaceholderEmail(email: string): boolean {
+  return email.trim().toLowerCase().endsWith("@cocoonskinandbeauty.com.au");
+}
+
 /** Format a "HH:MM" string to 12-hour display, e.g. "14:30" → "2:30pm" */
 export function formatTime(hhmm: string): string {
   const [hStr, mStr] = hhmm.split(":");

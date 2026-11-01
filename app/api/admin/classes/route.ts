@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       .from("class_sessions")
       .select(`
         id, class_type, title, start_datetime, duration_minutes, capacity, description, active,
-        class_bookings(id, status, clients(first_name, last_name, email, mobile))
+        class_bookings(id, status, mailchimp_tagged_at, clients(first_name, last_name, email, mobile))
       `)
       .order("start_datetime", { ascending: true })
       .eq("active", true);

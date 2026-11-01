@@ -32,6 +32,8 @@ interface CalendarBlockedPeriod {
 interface CalendarClassBooking {
   id: string;
   status: string;
+  /** Set once the class is completed (Mailchimp follow-up tag applied). */
+  mailchimp_tagged_at: string | null;
   clients: { first_name: string; last_name: string; email: string; mobile: string } | null;
 }
 
@@ -211,6 +213,7 @@ export default function MobileCalendar() {
   const [csEditError,      setCsEditError]      = useState<string | null>(null);
   const [csEditSaved,      setCsEditSaved]      = useState(false);
   const [csCancelling,     setCsCancelling]     = useState(false);
+  const [csCompleting,     setCsCompleting]     = useState(false);
 
   // ── Blocked period detail + edit sheet ──────────────────────────────────
   const [selectedBlock,   setSelectedBlock]   = useState<CalendarBlockedPeriod | null>(null);
@@ -501,6 +504,47 @@ export default function MobileCalendar() {
       setApptEditError("An unexpected error occurred");
     } finally {
       setApptEditSaving(false);
+    }
+  }
+
+  // ── Complete class session (same call as the desktop Mark Complete) ────────
+  // Completion isn't a status: it tags each confirmed booking in Mailchimp and
+  // sets class_bookings.mailchimp_tagged_at. Already-tagged bookings are skipped.
+
+  async function handleClassComplete() {
+    if (!selectedClass) return;
+    const confirmedCount = selectedClass.class_bookings.filter(b => b.status === "confirmed").length;
+    if (!confirm(`Mark this class complete? Mailchimp follow-up tags will be applied to ${confirmedCount} client(s).`)) return;
+    setCsCompleting(true);
+    try {
+      const res = await fetch(`/api/admin/classes/${selectedClass.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete" }),
+      });
+      const data = await res.json().catch(() => ({})) as { error?: string };
+
+      // Re-read bookings so the button reflects what was saved, even after a partial failure.
+      try {
+        const refreshRes = await fetch(`/api/admin/classes/${selectedClass.id}`);
+        const refreshed = await refreshRes.json() as { bookings?: { id: string; mailchimp_tagged_at: string | null }[] };
+        if (refreshRes.ok && refreshed.bookings) {
+          const tagged = new Map(refreshed.bookings.map(b => [b.id, b.mailchimp_tagged_at]));
+          setSelectedClass(c => c && {
+            ...c,
+            class_bookings: c.class_bookings.map(b => ({ ...b, mailchimp_tagged_at: tagged.get(b.id) ?? b.mailchimp_tagged_at })),
+          });
+        }
+      } catch {
+        // Refetch failed — the alert below still reports the outcome.
+      }
+      fetchDay(selectedDate);
+
+      if (!res.ok) alert(data.error ?? "Failed to mark class complete");
+    } catch {
+      alert("An unexpected error occurred");
+    } finally {
+      setCsCompleting(false);
     }
   }
 
@@ -1422,6 +1466,22 @@ export default function MobileCalendar() {
                 </div>
               </div>
             )}
+
+            {selectedClass.active && (() => {
+              const confirmed = selectedClass.class_bookings.filter(b => b.status === "confirmed");
+              if (confirmed.length === 0) return null;
+              const allTagged = confirmed.every(b => b.mailchimp_tagged_at);
+              return (
+                <button
+                  onClick={handleClassComplete}
+                  disabled={csCompleting || allTagged}
+                  className="w-full py-3.5 rounded-2xl border border-[#044e77] text-[#044e77] text-[14px] font-medium
+                             active:opacity-80 transition-opacity disabled:opacity-50 mb-2"
+                >
+                  {allTagged ? "✓ Completed" : csCompleting ? "Completing…" : "Complete"}
+                </button>
+              );
+            })()}
 
             {selectedClass.active && (
               <button

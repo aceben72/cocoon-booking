@@ -54,6 +54,7 @@ export interface RawBlockedPeriod {
 export interface RawClassBooking {
   id: string;
   status: string;
+  mailchimp_tagged_at: string | null;
   clients: {
     first_name: string;
     last_name: string;
@@ -122,7 +123,7 @@ async function getClassSessions(from: string, to: string): Promise<RawClassSessi
     .from("class_sessions")
     .select(`
       id, class_type, title, start_datetime, duration_minutes, capacity, description, active,
-      class_bookings(id, status, clients(first_name, last_name, email, mobile))
+      class_bookings(id, status, mailchimp_tagged_at, clients(first_name, last_name, email, mobile))
     `)
     .order("start_datetime", { ascending: true })
     .eq("active", true);

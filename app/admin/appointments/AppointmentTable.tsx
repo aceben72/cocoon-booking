@@ -20,6 +20,8 @@ interface BlockedPeriod {
 interface ClassBooking {
   id: string;
   status: string;
+  /** Set once the class is completed (Mailchimp follow-up tag applied). */
+  mailchimp_tagged_at: string | null;
   clients: {
     first_name: string;
     last_name: string;
@@ -1001,6 +1003,31 @@ export function AppointmentTable({
   }
 
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const [completingClassId, setCompletingClassId] = useState<string | null>(null);
+
+  // Class completion isn't a status: it tags each confirmed booking in Mailchimp
+  // (class_bookings.mailchimp_tagged_at). Same call as Classes > View > Mark Complete.
+  async function completeClass(cs: ClassSession, confirmedCount: number) {
+    if (!confirm(`Mark this class complete? Mailchimp follow-up tags will be applied to ${confirmedCount} client(s).`)) return;
+    setCompletingClassId(cs.id);
+    try {
+      const res = await fetch(`/api/admin/classes/${cs.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete" }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        alert(d.error ?? "Failed to mark class complete");
+      }
+    } catch {
+      alert("An unexpected error occurred");
+    } finally {
+      // Refresh either way — some clients may be tagged even if others failed.
+      startTransition(() => router.refresh());
+      setCompletingClassId(null);
+    }
+  }
 
   async function updateStatus(id: string, status: string, expectedStatus?: string) {
     setUpdatingId(id);
@@ -1292,6 +1319,22 @@ export function AppointmentTable({
                         <td className="px-4 py-3 text-right text-[#c0b4ab]">—</td>
                         {/* Actions */}
                         <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                          {cs.active && confirmedCount > 0 && (() => {
+                            const allTagged = cs.class_bookings
+                              .filter(b => b.status === "confirmed")
+                              .every(b => b.mailchimp_tagged_at);
+                            return (
+                              <button
+                                onClick={() => completeClass(cs, confirmedCount)}
+                                disabled={completingClassId === cs.id || allTagged}
+                                className="text-xs px-2.5 py-1 rounded border border-emerald-200 text-emerald-700
+                                           hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                              >
+                                {allTagged ? "✓ Completed" : completingClassId === cs.id ? "Completing…" : "Complete"}
+                              </button>
+                            );
+                          })()}
                           {cs.active && (
                             <button
                               onClick={() => {
@@ -1307,6 +1350,7 @@ export function AppointmentTable({
                               Edit
                             </button>
                           )}
+                          </div>
                         </td>
                       </tr>
                       {isExpanded && (

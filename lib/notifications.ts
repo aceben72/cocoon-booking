@@ -1121,9 +1121,11 @@ const MAILCHIMP_TAG_MAP: Record<string, { new: string; returning: string }> = {
   "mother-daughter":       { new: "post-makeup-class-new",       returning: "post-makeup-class-returning" },
   "brow-treatments":       { new: "post-brow-new",               returning: "post-brow-returning" },
   "led-light-treatments":  { new: "post-led-new",                returning: "post-led-returning" },
-  // Personal Make Up Class is booked as an appointment with category "make-up"
-  // (shared with Professional Make-Up Application), so it needs its own key —
-  // matched by service name, not category, in the appointment completion handler.
+  // Private Make-Up Lesson and Me & a Friend Make-Up Lesson are booked as
+  // appointments with category "make-up" (shared with Professional Make-Up
+  // Application), so they need their own key — matched by service name, not
+  // category, in lib/appointment-completion.ts. Key name kept from when this
+  // was the "Personal Make Up Class".
   "personal-make-up-class": { new: "post-makeup-class-new",      returning: "post-makeup-class-returning" },
 };
 

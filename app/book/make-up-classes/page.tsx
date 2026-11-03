@@ -81,7 +81,8 @@ export default async function MakeUpClassesPage({
             Make-Up Classes
           </h1>
           <p className="text-[#7a6f68] font-light text-sm">
-            Learn professional techniques in a fun, relaxed group setting. Choose an upcoming session below.
+            The last scheduled group sessions. Make-up lessons are now private —{" "}
+            <Link href="/book/make-up" className="text-[#044e77] hover:underline">book one any time</Link>.
           </p>
         </div>
 
@@ -112,10 +113,14 @@ export default async function MakeUpClassesPage({
         {visibleSessions.length === 0 ? (
           <div className="bg-white rounded-2xl border border-[#e8e0d8] p-10 text-center">
             <p className="font-[family-name:var(--font-cormorant)] text-2xl italic text-[#044e77] mb-3">
-              No classes scheduled yet
+              Now booked privately
             </p>
             <p className="text-sm text-[#7a6f68] font-light">
-              Check back soon, or contact Amanda directly to register your interest.
+              Group classes have finished. Make-up lessons are now private bookings at a time that suits you.{" "}
+              <Link href="/book/make-up" className="text-[#044e77] hover:underline">
+                Book a private make-up lesson
+              </Link>
+              .
             </p>
           </div>
         ) : (

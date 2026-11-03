@@ -1,5 +1,7 @@
 "use client";
 
+import { LessonDetails, type LessonAttendee } from "@/components/LessonDetails";
+import { isMakeupLesson } from "@/lib/makeup-lessons";
 import React, { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { NewBookingForm } from "./NewBookingForm";
@@ -79,6 +81,8 @@ interface Appointment {
   } | null;
   intake_forms: { id: string; status: string; token: string }[];
   facial_package_redemptions: { id: string }[];
+  extra_daughters?: number;
+  appointment_attendees?: LessonAttendee[];
   loyalty?: AppointmentLoyalty | null;
 }
 
@@ -1660,6 +1664,15 @@ export function AppointmentTable({
                                 <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Booked At</div>
                                 <div>{formatAEST(appt.created_at)}</div>
                               </div>
+                              {isMakeupLesson(appt.services?.name) && (
+                                <div className="col-span-2 sm:col-span-4 max-w-md">
+                                  <LessonDetails
+                                    serviceName={appt.services?.name}
+                                    extraDaughters={appt.extra_daughters}
+                                    attendees={appt.appointment_attendees}
+                                  />
+                                </div>
+                              )}
                               {appt.notes && (
                                 <div className="col-span-2 sm:col-span-4">
                                   <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Notes</div>

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SERVICES } from "@/lib/services-data";
-import { fetchTimeList, hasConflict, type BusyQueryOptions, type ServiceLookup } from "@/lib/slot-rules";
+import { fetchTimeList, hasConflict, type BusyQueryOptions, type ServiceLookup, type SlotService } from "@/lib/slot-rules";
 
 // The rules themselves live in lib/slot-rules.ts (pure, so `npm test` can load
 // it). Import them from here in app code.
@@ -9,6 +9,7 @@ export {
   CLASS_PADDING_MINUTES,
   SlotCheckError,
   bookingLengthMinutes,
+  withinOpeningHours,
 } from "@/lib/slot-rules";
 
 /** Current duration/padding for a service, by the name stored in the DB. */
@@ -22,7 +23,7 @@ export const currentServiceByName: ServiceLookup = (name) => SERVICES.find((s) =
  */
 export function getTimeList(
   supabase: SupabaseClient,
-  p: { date: string; lengthMinutes: number; openTime: string; closeTime: string; nowMs: number },
+  p: { date: string; service: SlotService; openTime: string; closeTime: string; nowMs: number },
 ): Promise<string[]> {
   return fetchTimeList(supabase, { ...p, lookup: currentServiceByName });
 }

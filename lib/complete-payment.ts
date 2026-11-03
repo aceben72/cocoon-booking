@@ -33,6 +33,13 @@ export interface CompletionInput {
   serviceName?: string;           // services.name, for EARLIER_CARD_PRICES
   servicePriceCents: number;     // services.price_cents (current card price)
   serviceCashPriceCents: number | null; // services.cash_price_cents (null = no cash price)
+  /**
+   * Add-ons priced into amount_cents on top of the service (Mother & Daughter
+   * extra daughters): their card total and cash total. From
+   * lib/makeup-lessons.ts; 0/0 when there are none.
+   */
+  addOnCardCents?: number;
+  addOnCashCents?: number;
   loyaltyRewardDueCents: number;  // from getLoyaltyRewardForAppointment when due, else 0
 }
 
@@ -58,21 +65,34 @@ export interface CompletionResult {
 export const EARLIER_CARD_PRICES: Record<string, { priceCents: number; cashPriceCents: number }[]> = {
   // 22 Oct 2026: $134 / $130 → $139 / $135
   "Professional Make-Up Application": [{ priceCents: 13400, cashPriceCents: 13000 }],
+  // Nov 2026 lesson restructure. Keyed by the NEW names: the rows were renamed
+  // in place, so old bookings now read back under these names.
+  // Was "Personal Make Up Class", $164 / $159.
+  "Private Make-Up Lesson": [{ priceCents: 16400, cashPriceCents: 15900 }],
+  // Was "Mother Daughter Make-Up Class", $185 / $179.
+  "Mother & Daughter Make-Up Class": [{ priceCents: 18500, cashPriceCents: 17900 }],
 };
 
 /**
  * The cash/PayID discount for this booking: card price − cash price at the
  * card price the booking was made at — today's (services.price_cents) or an
- * earlier post-1 Oct one (EARLIER_CARD_PRICES). Anything else, e.g. a booking
- * made before the 1 Oct price change, gets no discount.
+ * earlier post-1 Oct one (EARLIER_CARD_PRICES) — plus the add-ons' own saving
+ * (Mother & Daughter: $3 per extra daughter). amount_cents includes the
+ * add-ons, so they're taken off before matching the service price. Anything
+ * else, e.g. a booking made before the 1 Oct price change, gets no discount.
  */
-export function cashDiscountAvailable(input: Pick<CompletionInput, "amountCents" | "serviceName" | "servicePriceCents" | "serviceCashPriceCents">): number {
-  if (input.amountCents === input.servicePriceCents) {
+export function cashDiscountAvailable(
+  input: Pick<CompletionInput, "amountCents" | "serviceName" | "servicePriceCents" | "serviceCashPriceCents" | "addOnCardCents" | "addOnCashCents">,
+): number {
+  const addOnCard = input.addOnCardCents ?? 0;
+  const addOnSaving = Math.max(0, addOnCard - (input.addOnCashCents ?? addOnCard));
+  const baseCents = input.amountCents - addOnCard;
+  if (baseCents === input.servicePriceCents) {
     if (input.serviceCashPriceCents == null) return 0;
-    return Math.max(0, input.servicePriceCents - input.serviceCashPriceCents);
+    return Math.max(0, input.servicePriceCents - input.serviceCashPriceCents) + addOnSaving;
   }
-  const earlier = (EARLIER_CARD_PRICES[input.serviceName ?? ""] ?? []).find((p) => p.priceCents === input.amountCents);
-  return earlier ? Math.max(0, earlier.priceCents - earlier.cashPriceCents) : 0;
+  const earlier = (EARLIER_CARD_PRICES[input.serviceName ?? ""] ?? []).find((p) => p.priceCents === baseCents);
+  return earlier ? Math.max(0, earlier.priceCents - earlier.cashPriceCents) + addOnSaving : 0;
 }
 
 /**

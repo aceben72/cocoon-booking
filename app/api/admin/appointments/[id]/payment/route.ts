@@ -9,6 +9,7 @@ import {
   type CompletionInput,
   type CompletionResult,
 } from "@/lib/complete-payment";
+import { EXTRA_DAUGHTER_CASH_PRICE_CENTS, EXTRA_DAUGHTER_PRICE_CENTS, normaliseExtraDaughters } from "@/lib/makeup-lessons";
 
 function supabase() {
   return createClient(
@@ -22,6 +23,7 @@ const CHOICES: CompleteChoice[] = ["cash", "payid", "card", "not_paid"];
 interface Loaded {
   status: string;
   serviceName: string;
+  extraDaughters: number;
   clientName: string;
   startISO: string;
   input: CompletionInput;
@@ -32,7 +34,7 @@ async function load(db: SupabaseClient, id: string): Promise<Loaded | null> {
   const { data: appt } = await db
     .from("appointments")
     .select(`
-      id, status, start_datetime, amount_cents, discount_cents, loyalty_discount_cents, cash_discount_cents, amount_paid_cents,
+      id, status, start_datetime, amount_cents, discount_cents, loyalty_discount_cents, cash_discount_cents, amount_paid_cents, extra_daughters,
       services ( name, price_cents, cash_price_cents ),
       clients ( first_name, last_name ),
       appointment_payments ( id, amount_cents, method, paid_at, notes )
@@ -43,6 +45,7 @@ async function load(db: SupabaseClient, id: string): Promise<Loaded | null> {
 
   const svc = appt.services as unknown as { name: string; price_cents: number; cash_price_cents: number | null } | null;
   const client = appt.clients as unknown as { first_name: string; last_name: string } | null;
+  const extraDaughters = normaliseExtraDaughters(svc?.name, appt.extra_daughters);
 
   // Loyalty (Prompt 2 rules) — a lookup failure must not block taking payment.
   let loyaltyRewardDueCents = 0;
@@ -56,6 +59,7 @@ async function load(db: SupabaseClient, id: string): Promise<Loaded | null> {
   return {
     status: appt.status as string,
     serviceName: svc?.name ?? "—",
+    extraDaughters,
     clientName: client ? `${client.first_name} ${client.last_name}` : "—",
     startISO: appt.start_datetime as string,
     input: {
@@ -67,6 +71,8 @@ async function load(db: SupabaseClient, id: string): Promise<Loaded | null> {
       serviceName: svc?.name,
       servicePriceCents: svc?.price_cents ?? 0,
       serviceCashPriceCents: svc?.cash_price_cents ?? null,
+      addOnCardCents: extraDaughters * EXTRA_DAUGHTER_PRICE_CENTS,
+      addOnCashCents: extraDaughters * EXTRA_DAUGHTER_CASH_PRICE_CENTS,
       loyaltyRewardDueCents,
     },
     payments: ((appt.appointment_payments ?? []) as Loaded["payments"])
@@ -91,6 +97,7 @@ export async function GET(
     ...loaded.input,
     status: loaded.status,
     serviceName: loaded.serviceName,
+    extraDaughters: loaded.extraDaughters,
     clientName: loaded.clientName,
     startISO: loaded.startISO,
     cashDiscountAvailableCents: cashDiscountAvailable(loaded.input),

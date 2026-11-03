@@ -7,6 +7,7 @@ import { sendPaymentRequest, sendAppointmentConfirmation, sendAdminBookingNotifi
 import { hasBookingConflict } from "@/lib/booking-conflicts";
 import { adminBookingAmounts, type AdminBookingMode } from "@/lib/complete-payment";
 import { getRewardForNewBooking } from "@/lib/loyalty";
+import { bookingPriceCents, isMakeupLesson, lessonAttendeeRows, normaliseExtraDaughters } from "@/lib/makeup-lessons";
 
 function supabase() {
   return createClient(
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
     mobile?: string;
     mode?: AdminBookingMode;
     noCharge?: boolean; // legacy (cached admin pages): true = no_charge, otherwise payment_link
+    extraDaughters?: number; // Mother & Daughter only, 0–2
   };
 
   const { serviceId, date, time, firstName, lastName, email, mobile: rawMobile, noCharge } = body;
@@ -50,6 +52,8 @@ export async function POST(request: NextRequest) {
   if (!mobile) {
     return NextResponse.json({ error: "Invalid Australian mobile number" }, { status: 400 });
   }
+
+  const extraDaughters = normaliseExtraDaughters(service.name, body.extraDaughters);
 
   // Compute UTC datetimes
   const startISO = aestToUTC(date, time);
@@ -138,7 +142,7 @@ export async function POST(request: NextRequest) {
   // booking). Only "no charge" and admin-only services are $0.
   const amounts = adminBookingAmounts({
     mode,
-    priceCents: service.price_cents,
+    priceCents: bookingPriceCents(service, extraDaughters),
     adminOnly: service.admin_only === true,
     loyaltyRewardDueCents,
   });
@@ -153,6 +157,7 @@ export async function POST(request: NextRequest) {
     end_datetime:           endISO,
     status:                 amounts.status,
     amount_cents:           amounts.amountCents,
+    extra_daughters:        extraDaughters,
     amount_paid_cents:      0,
     loyalty_discount_cents: amounts.loyaltyDiscountCents,
     ...(isPaymentLink
@@ -176,15 +181,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Lesson head count for the checklist (levels unknown for admin bookings).
+  if (isMakeupLesson(service.name)) {
+    const { error: attErr } = await db.from("appointment_attendees").insert(
+      lessonAttendeeRows(service.name, { extraDaughters }).map((r) => ({ ...r, appointment_id: appointment.id })),
+    );
+    if (attErr) console.error("[admin/bookings] attendee insert failed:", appointment.id, attErr);
+  }
+
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (request.headers.get("origin") || "http://localhost:3000");
 
   // Create intake form for new clients (excluding make-up classes and no-charge/internal services)
-  const INTAKE_EXCLUDED_SERVICES = ["Make-Up Class", "Mother Daughter Make-Up Class"];
   const isNewClient = !existingClient;
   let intakeFormUrl: string | null = null;
-  if (isNewClient && !isNoCharge && !INTAKE_EXCLUDED_SERVICES.includes(service.name)) {
+  if (isNewClient && !isNoCharge && !isMakeupLesson(service.name)) {
     try {
       const intakeToken    = randomBytes(32).toString("hex");
       const intakeExpiresAt = new Date(new Date(startISO).getTime() + 4 * 60 * 60 * 1000).toISOString();

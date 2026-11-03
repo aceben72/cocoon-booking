@@ -205,13 +205,26 @@ function timeToMinutes(hhmm: string): number {
 }
 
 /**
+ * Opening-hours rule (Amanda, Nov 2026): the SERVICE must start at or after
+ * opening and finish by closing. Padding only separates one booking from the
+ * next, so it may run past closing — e.g. a 2-hour lesson at 2pm on a Sunday
+ * (close 4pm) is fine. Clashes with other bookings and blocked periods still
+ * use duration + padding (bookingLengthMinutes / overlapsAny).
+ */
+export function withinOpeningHours(p: { time: string; durationMinutes: number; openTime: string; closeTime: string }): boolean {
+  const start = timeToMinutes(p.time);
+  return start >= timeToMinutes(p.openTime) && start + p.durationMinutes <= timeToMinutes(p.closeTime);
+}
+
+/**
  * Start times ("HH:MM" AEST) to offer on `date`: on the 30-min grid from
- * opening, the whole booking (incl. padding) finishing by close, at least
- * MIN_NOTICE_MS after `nowMs`, and clear of every busy window.
+ * opening, the service finishing by close (withinOpeningHours), at least
+ * MIN_NOTICE_MS after `nowMs`, and the whole booking (incl. padding) clear of
+ * every busy window.
  */
 export function offeredSlots(p: {
   date: string;
-  lengthMinutes: number;
+  service: SlotService;
   openTime: string;
   closeTime: string;
   busy: BusyWindow[];
@@ -219,11 +232,13 @@ export function offeredSlots(p: {
 }): string[] {
   const open = timeToMinutes(p.openTime);
   const close = timeToMinutes(p.closeTime);
+  const lengthMinutes = bookingLengthMinutes(p.service);
   const slots: string[] = [];
-  for (let start = open; start + p.lengthMinutes <= close; start += SLOT_STEP_MINUTES) {
+  for (let start = open; start < close; start += SLOT_STEP_MINUTES) {
     const hhmm = minutesToTime(start);
+    if (!withinOpeningHours({ time: hhmm, durationMinutes: p.service.duration_minutes, openTime: p.openTime, closeTime: p.closeTime })) continue;
     const startMs = aestToEpochMs(p.date, hhmm);
-    const endMs = startMs + p.lengthMinutes * 60_000;
+    const endMs = startMs + lengthMinutes * 60_000;
     if (startMs - p.nowMs < MIN_NOTICE_MS) continue;
     if (overlapsAny(startMs, endMs, p.busy)) continue;
     slots.push(hhmm);
@@ -241,7 +256,7 @@ export function offeredSlots(p: {
  */
 export async function fetchTimeList(
   supabase: SupabaseClient,
-  p: { date: string; lengthMinutes: number; openTime: string; closeTime: string; nowMs: number; lookup: ServiceLookup },
+  p: { date: string; service: SlotService; openTime: string; closeTime: string; nowMs: number; lookup: ServiceLookup },
 ): Promise<string[]> {
   const dayStartMs = aestToEpochMs(p.date, "00:00");
   const from = new Date(dayStartMs - 24 * 60 * 60 * 1000).toISOString();

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import type { ClientDetailsForm } from "@/types";
 import { isValidAustralianMobile, isValidEmail } from "@/lib/utils";
+import { isMakeupLesson } from "@/lib/makeup-lessons";
+import LessonFields from "./LessonFields";
 
 interface Props {
   onSubmit: (details: ClientDetailsForm) => void;
@@ -15,6 +17,8 @@ interface Props {
   initial?: ClientDetailsForm | null;
   /** Called with the details as she types, so a parent "Change" link can keep them. */
   onDraftChange?: (draft: ClientDetailsForm) => void;
+  /** services.name — the private make-up lessons get extra (optional) questions. */
+  serviceName?: string;
 }
 
 export default function StepDetails({
@@ -25,7 +29,9 @@ export default function StepDetails({
   showNewClientCheckbox = true,
   initial,
   onDraftChange,
+  serviceName,
 }: Props) {
+  const isLesson = isMakeupLesson(serviceName);
   const [form, setForm] = useState<ClientDetailsForm>(
     initial ?? {
       first_name: "",
@@ -37,6 +43,7 @@ export default function StepDetails({
     },
   );
   const [errors, setErrors] = useState<Partial<Record<keyof ClientDetailsForm, string>>>({});
+  const [lessonErrors, setLessonErrors] = useState<{ friendEmail?: string; friendMobile?: string }>({});
 
   useEffect(() => {
     onDraftChange?.(form);
@@ -56,12 +63,24 @@ export default function StepDetails({
     if (!form.mobile.trim() || !isValidAustralianMobile(form.mobile))
       newErrors.mobile = "Enter a valid Australian mobile (e.g. 0412 345 678)";
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    // Friend's details are optional, but check them if given.
+    const friend = isLesson ? form.lesson?.friend : undefined;
+    const newLessonErrors: typeof lessonErrors = {};
+    if (friend?.email?.trim() && !isValidEmail(friend.email.trim())) newLessonErrors.friendEmail = "Check your friend's email address";
+    if (friend?.mobile?.trim() && !isValidAustralianMobile(friend.mobile)) newLessonErrors.friendMobile = "Check your friend's mobile (e.g. 0412 345 678)";
+    setLessonErrors(newLessonErrors);
+    return Object.keys(newErrors).length === 0 && Object.keys(newLessonErrors).length === 0;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (validate()) onSubmit({ ...form, is_new_client: showNewClientCheckbox ? form.is_new_client : false });
+    if (validate()) {
+      onSubmit({
+        ...form,
+        is_new_client: showNewClientCheckbox ? form.is_new_client : false,
+        lesson: isLesson ? (form.lesson ?? {}) : undefined,
+      });
+    }
   };
 
   return (
@@ -170,6 +189,19 @@ export default function StepDetails({
               suppressHydrationWarning
             />
           </Field>
+
+          {isLesson && serviceName && (
+            <LessonFields
+              serviceName={serviceName}
+              value={form.lesson ?? {}}
+              onChange={(lesson) => {
+                setForm((prev) => ({ ...prev, lesson }));
+                setLessonErrors({});
+              }}
+              errors={lessonErrors}
+              inputClass={inputClass}
+            />
+          )}
 
           {/* New client */}
           {showNewClientCheckbox && (

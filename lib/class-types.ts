@@ -3,6 +3,12 @@ import type { ClassType } from "@/types";
 // Single source of truth for the group class_sessions system (masterclass /
 // advanced_class / mother_daughter) — label, price, and duration used across
 // both the booking flow and the admin classes UI.
+//
+// Retired Nov 2026: no new group sessions are created (POST /api/admin/classes
+// refuses, the admin form is gone). The types stay so past sessions and any
+// session already scheduled keep displaying, taking bookings and completing.
+// Make-up lessons are now private services (lib/makeup-lessons.ts).
+export const GROUP_CLASSES_RETIRED = true;
 export const CLASS_TYPE_CONFIG: Record<ClassType, {
   label: string;
   priceCents: number;

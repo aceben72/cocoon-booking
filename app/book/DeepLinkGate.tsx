@@ -21,6 +21,7 @@ const CATEGORY_ALIASES: Record<string, string> = {
 
 const SERVICE_ALIASES: Record<string, string> = {
   "personal-makeup-class": "makeup-class",
+  "private-makeup-lesson": "makeup-class", // renamed Nov 2026; id kept so old links work
 };
 
 function resolveCategory(slug: string): string {

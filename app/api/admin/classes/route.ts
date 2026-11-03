@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { parseAESTDate } from "@/lib/utils";
-import { CLASS_TYPE_CONFIG, CLASS_TYPE_LABELS } from "@/lib/class-types";
+import { CLASS_TYPE_CONFIG, CLASS_TYPE_LABELS, GROUP_CLASSES_RETIRED } from "@/lib/class-types";
 import { hasBookingConflict, CLASS_PADDING_MINUTES } from "@/lib/booking-conflicts";
 import type { ClassType } from "@/types";
 
@@ -89,6 +89,14 @@ export async function POST(request: NextRequest) {
     description?: string;
     capacity?: number;
   };
+
+  // Group classes are retired: existing sessions keep working, no new ones.
+  if (GROUP_CLASSES_RETIRED) {
+    return NextResponse.json(
+      { error: "Group classes are no longer scheduled. Book a private make-up lesson from Appointments instead." },
+      { status: 410 },
+    );
+  }
 
   if (!class_type || !start_datetime) {
     return NextResponse.json({ error: "class_type and start_datetime are required" }, { status: 400 });

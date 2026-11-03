@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { SERVICES, CATEGORY_META } from "@/lib/services-data";
 import { formatPrice } from "@/lib/utils";
+import { allowsExtraDaughters, bookingPriceCents, EXTRA_DAUGHTER_PRICE_CENTS, MAX_EXTRA_DAUGHTERS } from "@/lib/makeup-lessons";
 
 interface ClientSuggestion {
   id: string;
@@ -47,6 +48,7 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   const [lastName, setLastName]     = useState("");
   const [email, setEmail]           = useState("");
   const [mobile, setMobile]         = useState("");
+  const [extraDaughters, setExtraDaughters] = useState(0);
   // pay_on_day: Amanda takes payment at the appointment (the everyday case).
   const [mode, setMode]             = useState<"pay_on_day" | "payment_link" | "no_charge">("pay_on_day");
   const [loyaltyRewardCents, setLoyaltyRewardCents] = useState(0);
@@ -120,6 +122,8 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   }
 
   const selectedService = allAdminServices.find((s) => s.id === serviceId);
+  const showExtras = allowsExtraDaughters(selectedService?.name);
+  const selectedPriceCents = selectedService ? bookingPriceCents(selectedService, showExtras ? extraDaughters : 0) : 0;
   // Auto-enable no-charge for admin-only (zero-price) services
   const isAdminOnlyService = selectedService?.admin_only === true;
 
@@ -194,7 +198,7 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
       const res = await fetch("/api/admin/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceId, date, time, firstName, lastName, email, mobile, mode: effectiveMode }),
+        body: JSON.stringify({ serviceId, date, time, firstName, lastName, email, mobile, mode: effectiveMode, extraDaughters: showExtras ? extraDaughters : 0 }),
       });
       const data = await res.json() as { error?: string; paymentUrl?: string; service?: string };
 
@@ -312,6 +316,18 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
                 </optgroup>
               );
             })}
+            {/* Single-service categories with no CATEGORY_META entry (Mother & Daughter) */}
+            {activeServices.filter((s) => !CATEGORY_META.some((c) => c.id === s.category)).length > 0 && (
+              <optgroup label="Other">
+                {activeServices
+                  .filter((s) => !CATEGORY_META.some((c) => c.id === s.category))
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — ${(s.price_cents / 100).toFixed(0)}
+                    </option>
+                  ))}
+              </optgroup>
+            )}
             {adminOnlyServices.length > 0 && (
               <optgroup label="── Internal ──">
                 {adminOnlyServices.map((s) => (
@@ -324,8 +340,22 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
           </select>
           {selectedService && (
             <p className="text-xs text-[#9a8f87] mt-1">
-              {selectedService.duration_minutes} min · ${(selectedService.price_cents / 100).toFixed(0)}
+              {selectedService.duration_minutes} min · {formatPrice(selectedPriceCents)}
             </p>
+          )}
+          {showExtras && (
+            <label className="block mt-2 text-xs text-[#7a6f68]">
+              Extra daughters{" "}
+              <select
+                value={extraDaughters}
+                onChange={(e) => setExtraDaughters(Number(e.target.value))}
+                className="ml-1 h-8 border border-[#ddd8d2] rounded-lg px-2 text-sm text-[#1a1a1a] bg-white"
+              >
+                {Array.from({ length: MAX_EXTRA_DAUGHTERS + 1 }, (_, n) => (
+                  <option key={n} value={n}>{n}{n > 0 ? ` (+${formatPrice(n * EXTRA_DAUGHTER_PRICE_CENTS)})` : ""}</option>
+                ))}
+              </select>
+            </label>
           )}
         </div>
 
@@ -462,7 +492,7 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
           <legend className="text-xs font-medium text-[#7a6f68] mb-1.5">Payment</legend>
           <div className="flex flex-wrap gap-2">
             {([
-              ["pay_on_day", `Pay on the day${selectedService ? ` (${formatPrice(selectedService.price_cents)})` : ""}`],
+              ["pay_on_day", `Pay on the day${selectedService ? ` (${formatPrice(selectedPriceCents)})` : ""}`],
               ["payment_link", "Send payment link"],
               ["no_charge", "No charge / internal"],
             ] as const).map(([value, label]) => (

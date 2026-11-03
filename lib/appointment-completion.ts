@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { upsertMailchimpContact } from "@/lib/notifications";
+import { isMakeupLesson } from "@/lib/makeup-lessons";
 
 /** Clear is_new_client once the client has another confirmed/completed appointment. */
 export async function clearNewClientFlagIfReturning(db: SupabaseClient, clientId: string, appointmentId: string) {
@@ -48,25 +49,28 @@ export async function onAppointmentCompleted(db: SupabaseClient, appointmentId: 
 
   // Mailchimp upsert + tag on completion
   if (clientData?.email && svcData?.category) {
-    // Personal Make Up Class is booked as an appointment (category "make-up",
-    // shared with Professional Make-Up Application), so it needs its own tag
-    // mapping key plus the base "makeup-class" tag — group classes get that
-    // base tag from the cron job in app/api/cron/reminders, but appointments
-    // are never seen by that cron.
+    // The Private and Me & a Friend lessons are booked as appointments in
+    // category "make-up" (shared with Professional Make-Up Application), so
+    // they're matched by name onto their own tag mapping key plus the base
+    // "makeup-class" tag — group classes get that base tag from the cron job
+    // in app/api/cron/reminders, but appointments are never seen by that cron.
+    // Mother & Daughter has its own category ("mother-daughter"), which maps
+    // to the same post-makeup-class tags. Only the booking client (the mum,
+    // or the client who brought a friend) is tagged — never the others.
     //
     // Scheduled with after() so Vercel keeps the function alive until the
     // Mailchimp requests finish (an un-awaited promise was frozen mid-flight
     // and silently dropped), without slowing the admin response. A failure
     // is logged but never affects the completion itself.
-    const isPersonalClass = svcData.name === "Personal Make Up Class";
+    const isLessonInMakeUp = svcData.category === "make-up" && isMakeupLesson(svcData.name);
     const email = clientData.email;
     const contact = {
       email,
       firstName: clientData.first_name,
       lastName: clientData.last_name,
-      serviceCategory: isPersonalClass ? "personal-make-up-class" : svcData.category,
+      serviceCategory: isLessonInMakeUp ? "personal-make-up-class" : svcData.category,
       isNewClient: clientData.is_new_client,
-      extraTags: isPersonalClass ? ["makeup-class"] : undefined,
+      extraTags: isLessonInMakeUp ? ["makeup-class"] : undefined,
     };
     after(() =>
       upsertMailchimpContact(contact).catch((err) =>

@@ -6,6 +6,7 @@ import { METHOD_LABEL, type CompleteChoice, type CompletionResult, type PaymentM
 interface Breakdown {
   status: string;
   serviceName: string;
+  extraDaughters?: number;
   clientName: string;
   startISO: string;
   amountCents: number;
@@ -120,7 +121,10 @@ export function CompletePaymentPanel({
         {data && card && cash && (
           <>
             <div className="text-sm space-y-1.5 border-b border-[#f0ebe4] pb-3 mb-3">
-              <Row label="Price" value={money(data.amountCents)} />
+              <Row
+                label={data.extraDaughters ? `Price (incl. ${data.extraDaughters} extra daughter${data.extraDaughters > 1 ? "s" : ""})` : "Price"}
+                value={money(data.amountCents)}
+              />
               {data.cashDiscountCents > 0 ? (
                 <Row label="Cash/PayID discount" value={`−${money(data.cashDiscountCents)}`} green />
               ) : data.cashDiscountAvailableCents > 0 && card.balanceBeforeCents > 0 ? (

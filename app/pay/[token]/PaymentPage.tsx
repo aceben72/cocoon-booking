@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
 import type { Service } from "@/types";
 
-const DEPOSIT_CENTS = 5000; // $50 — must match StepPayment
 
 const SQUARE_APP_ID       = process.env.NEXT_PUBLIC_SQUARE_APP_ID ?? "";
 const SQUARE_LOCATION_ID  = process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID ?? "";
@@ -51,6 +50,8 @@ interface Props {
   token: string;
   appointmentId: string;
   serviceName: string;
+  /** paymentLinkDepositCents(serviceName) — same figure the pay API accepts. */
+  depositCents: number;
   serviceCategory: string;
   priceCents: number;
   startISO: string;
@@ -62,6 +63,7 @@ interface Props {
 export function PaymentPage({
   token,
   serviceName,
+  depositCents: DEPOSIT_CENTS,
   serviceCategory,
   priceCents,
   startISO,

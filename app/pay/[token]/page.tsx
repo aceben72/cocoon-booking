@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { PaymentPage } from "./PaymentPage";
 import { SERVICES } from "@/lib/services-data";
+import { paymentLinkDepositCents } from "@/lib/makeup-lessons";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,7 @@ export default async function PayPage({
         token={token}
         appointmentId={appt.id}
         serviceName={appt.services?.name ?? ""}
+        depositCents={paymentLinkDepositCents(appt.services?.name)}
         serviceCategory={appt.services?.category ?? localService?.category ?? ""}
         priceCents={appt.amount_cents - (appt.discount_cents ?? 0) - (appt.loyalty_discount_cents ?? 0)}
         startISO={appt.start_datetime}

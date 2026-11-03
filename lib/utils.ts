@@ -34,7 +34,9 @@ export function cashSavingText(priceCents: number, cashPriceCents: number | null
  * day). Services without this are fully prepaid by card at booking. Single
  * source of truth for the booking flow (StepPayment) and POST /api/bookings.
  */
-const FULLY_PREPAID_CATEGORIES: Service["category"][] = ["brow-treatments", "led-light-treatments", "mother-daughter"];
+// Mother & Daughter (its own category) moved to a deposit in Nov 2026 with
+// the other private make-up lessons.
+const FULLY_PREPAID_CATEGORIES: Service["category"][] = ["brow-treatments", "led-light-treatments"];
 export function hasDepositOption(service: Pick<Service, "category">): boolean {
   return !FULLY_PREPAID_CATEGORIES.includes(service.category);
 }
@@ -45,6 +47,28 @@ export function hasDepositOption(service: Pick<Service, "category">): boolean {
  */
 export function serviceCashSavingText(service: Pick<Service, "category" | "price_cents" | "cash_price_cents">): string | null {
   return hasDepositOption(service) ? cashSavingText(service.price_cents, service.cash_price_cents) : null;
+}
+
+/**
+ * serviceCashSavingText for a whole booking whose totals differ from the
+ * service's (Mother & Daughter extras: $10 + $3 per extra daughter). Totals
+ * from bookingPriceCents / bookingCashPriceCents in lib/makeup-lessons.ts.
+ */
+export function bookingCashSavingText(
+  service: Pick<Service, "category">,
+  totalPriceCents: number,
+  totalCashPriceCents: number | null,
+): string | null {
+  return hasDepositOption(service) ? cashSavingText(totalPriceCents, totalCashPriceCents) : null;
+}
+
+/** Cash saving in cents for a whole booking (0 for fully prepaid services). */
+export function bookingCashSavingCents(
+  service: Pick<Service, "category">,
+  totalPriceCents: number,
+  totalCashPriceCents: number | null,
+): number {
+  return hasDepositOption(service) ? cashSavingDollars(totalPriceCents, totalCashPriceCents) * 100 : 0;
 }
 
 /** Cash saving in cents for a service (0 for fully prepaid services or no saving). */

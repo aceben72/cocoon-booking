@@ -19,7 +19,7 @@ export default async function ServiceBookingPage({ params, searchParams }: Props
   return (
     <BookingWizard
       service={service}
-      categoryLabel={catMeta?.label ?? category}
+      categoryLabel={catMeta?.label ?? (category === "mother-daughter" ? "Mother & Daughter" : category)}
       deepLinked={from === "deeplink"}
     />
   );

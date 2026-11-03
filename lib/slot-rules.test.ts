@@ -13,6 +13,7 @@ import {
   type BusyQueryOptions,
   type ServiceLookup,
   type SlotService,
+  withinOpeningHours,
 } from "./slot-rules.ts";
 
 // Durations as in lib/services-data.ts (which can't be loaded under node --test).
@@ -22,6 +23,7 @@ const SVC: Record<string, SlotService & { name: string }> = {
   makeup: { name: "Professional Make-Up Application", duration_minutes: 75, padding_minutes: 45 },
   liftingCode: { name: "Lifting Code Facial", duration_minutes: 90, padding_minutes: 30 },
   browWax: { name: "Brow Wax", duration_minutes: 30, padding_minutes: 30 },
+  privateLesson: { name: "Private Make-Up Lesson", duration_minutes: 120, padding_minutes: 30 },
 };
 const lookup: ServiceLookup = (name) => Object.values(SVC).find((s) => s.name === name);
 
@@ -77,7 +79,7 @@ const oct8 = fakeSupabase({
 
 /** The time list exactly as GET /api/availability builds it. */
 function timeList(db: SupabaseClient, svc: SlotService, nowMs: number) {
-  return fetchTimeList(db, { date: DAY, lengthMinutes: bookingLengthMinutes(svc), openTime: OPEN, closeTime: CLOSE, nowMs, lookup });
+  return fetchTimeList(db, { date: DAY, service: svc, openTime: OPEN, closeTime: CLOSE, nowMs, lookup });
 }
 
 /** The submit-time check exactly as POST /api/bookings runs it. */
@@ -104,9 +106,10 @@ test("booking length is duration + padding, first visit or not", () => {
 });
 
 test("8 Oct: Indulge time list matches what the submit check accepts", async () => {
-  assert.deepEqual(await timeList(oct8, SVC.indulge, EARLY), ["10:00", "13:00", "13:30"]);
+  // 4:30pm since Nov 2026: the facial ends at 5:30 close, padding may run past it.
+  assert.deepEqual(await timeList(oct8, SVC.indulge, EARLY), ["10:00", "13:00", "13:30", "16:30"]);
   // What she should have been shown at 9:55 (she was shown 12:00–4:00)
-  assert.deepEqual(await timeList(oct8, SVC.indulge, AT_955), ["13:00", "13:30"]);
+  assert.deepEqual(await timeList(oct8, SVC.indulge, AT_955), ["13:00", "13:30", "16:30"]);
   assert.equal(await submitClashes(oct8, SVC.indulge, "14:00"), true);
   assert.equal(await submitClashes(oct8, SVC.indulge, "13:00"), false);
 });
@@ -114,9 +117,9 @@ test("8 Oct: Indulge time list matches what the submit check accepts", async () 
 test("first visits: ticked and unticked get the same times (the cases that used to differ)", async () => {
   // Under the old +15 rule a first visit was offered only 1:00pm for Indulge,
   // nothing for Pro Make-Up, and lost 4:30pm for Brow Wax. Now identical:
-  assert.deepEqual(await timeList(oct8, SVC.indulge, EARLY), ["10:00", "13:00", "13:30"]);
+  assert.deepEqual(await timeList(oct8, SVC.indulge, EARLY), ["10:00", "13:00", "13:30", "16:30"]);
   assert.deepEqual(await timeList(oct8, SVC.makeup, EARLY), ["13:00"]); // 75+45 fills 1–3pm exactly
-  assert.deepEqual(await timeList(oct8, SVC.browWax, EARLY), ["10:00", "10:30", "13:00", "13:30", "14:00", "16:30"]);
+  assert.deepEqual(await timeList(oct8, SVC.browWax, EARLY), ["10:00", "10:30", "13:00", "13:30", "14:00", "16:30", "17:00"]);
   // ...and the submit check accepts them (her rejected 1:30pm would now go through)
   assert.equal(await submitClashes(oct8, SVC.indulge, "13:30"), false);
   assert.equal(await submitClashes(oct8, SVC.indulge, "10:00"), false);
@@ -125,8 +128,8 @@ test("first visits: ticked and unticked get the same times (the cases that used 
 });
 
 test("8 Oct: other durations", async () => {
-  // 45+30 = 75 min
-  assert.deepEqual(await timeList(oct8, SVC.basic, EARLY), ["10:00", "13:00", "13:30"]);
+  // 45+30 = 75 min (4:30pm: the facial ends 5:15, padding runs past close)
+  assert.deepEqual(await timeList(oct8, SVC.basic, EARLY), ["10:00", "13:00", "13:30", "16:30"]);
   // 90+30 = 120 min fits only the 1–3pm gap
   assert.deepEqual(await timeList(oct8, SVC.liftingCode, EARLY), ["13:00"]);
 });
@@ -153,8 +156,7 @@ test("time list and submit check agree on every slot, every service", async () =
     for (const svc of Object.values(SVC)) {
       for (const now of [EARLY, AT_955]) {
         const offered = new Set(await timeList(day, svc, now));
-        const len = bookingLengthMinutes(svc);
-        for (let m = 10 * 60; m + len <= 17 * 60 + 30; m += 30) {
+        for (let m = 10 * 60; m + svc.duration_minutes <= 17 * 60 + 30; m += 30) {
           const hhmm = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
           if (aestToEpochMs(DAY, hhmm) - now < 2 * 3600_000) {
             assert.ok(!offered.has(hhmm), `${svc.name} ${hhmm} offered inside 2h notice`);
@@ -186,7 +188,7 @@ test("group class sessions block duration + 30 min on both sides", async () => {
     ],
   });
   // Class holds 12:00–14:30; the inactive one at 4pm holds nothing
-  assert.deepEqual(await timeList(db, SVC.indulge, EARLY), ["10:00", "10:30", "14:30", "15:00", "15:30", "16:00"]);
+  assert.deepEqual(await timeList(db, SVC.indulge, EARLY), ["10:00", "10:30", "14:30", "15:00", "15:30", "16:00", "16:30"]);
   assert.equal(await submitClashes(db, SVC.indulge, "14:00"), true);
   assert.equal(await submitClashes(db, SVC.indulge, "14:30"), false);
 });
@@ -202,7 +204,7 @@ test("blocked periods: a block-out added after the page loaded is rejected at su
   // Submit now rejects it, and the refreshed list no longer offers it
   assert.equal(await submitClashes(db, SVC.indulge, "13:00"), true);
   assert.equal(await submitClashes(db, SVC.indulge, "13:30"), true); // starts inside the block-out
-  assert.deepEqual(await timeList(db, SVC.indulge, EARLY), ["10:00", "14:00", "14:30", "15:00", "15:30", "16:00"]);
+  assert.deepEqual(await timeList(db, SVC.indulge, EARLY), ["10:00", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30"]);
   // A slot ending exactly as the block-out starts is fine
   const touching = fakeSupabase({ blocked_periods: [{ start_datetime: iso(DAY, "11:30"), end_datetime: iso(DAY, "12:00") }] });
   assert.equal(await submitClashes(touching, SVC.indulge, "10:00"), false);
@@ -230,4 +232,47 @@ test("fail closed: time list errors (throws) instead of returning an empty or fu
     const db = fakeSupabase({ [broken]: "error" });
     await assert.rejects(timeList(db, SVC.indulge, EARLY), SlotCheckError, `${broken} error gave a time list`);
   }
+});
+
+// ── Closing time (Nov 2026): the service must end by close; padding may run past it ──
+// Hours as in lib/availability.ts: Thu/Fri 10:00–17:30, Sat 10:00–16:30, Sun 10:00–16:00.
+const SUN = "2026-11-08";
+const SUN_CLOSE = "16:00";
+const sunList = (db: SupabaseClient, svc: SlotService) =>
+  fetchTimeList(db, { date: SUN, service: svc, openTime: "10:00", closeTime: SUN_CLOSE, nowMs: aestToEpochMs(SUN, "07:00"), lookup });
+const sunOk = (svc: SlotService, time: string) =>
+  withinOpeningHours({ time, durationMinutes: svc.duration_minutes, openTime: "10:00", closeTime: SUN_CLOSE });
+
+test("Sunday: a 2pm Private Lesson is valid (ends 4pm close), 2:30pm is not", async () => {
+  const empty = fakeSupabase({});
+  const offered = await sunList(empty, SVC.privateLesson);
+  assert.ok(offered.includes("14:00"), "2pm Private Lesson should be offered");
+  assert.ok(!offered.includes("14:30"), "2:30pm Private Lesson ends after close");
+  assert.equal(offered.at(-1), "14:00");
+  // The booking check (POST /api/bookings) uses the same rule
+  assert.equal(sunOk(SVC.privateLesson, "14:00"), true);
+  assert.equal(sunOk(SVC.privateLesson, "14:30"), false);
+});
+
+test("Sunday: an Indulge Facial at 3pm is valid (ends 4pm close)", async () => {
+  const offered = await sunList(fakeSupabase({}), SVC.indulge);
+  assert.ok(offered.includes("15:00"));
+  assert.ok(!offered.includes("15:30"));
+  assert.equal(sunOk(SVC.indulge, "15:00"), true);
+  assert.equal(sunOk(SVC.indulge, "15:30"), false);
+});
+
+test("padding still separates bookings: a 10am Private Lesson blocks until 12:30", async () => {
+  const db = fakeSupabase({ appointments: [appt(SUN, "10:00", "12:30", "confirmed", SVC.privateLesson)] });
+  const offered = await sunList(db, SVC.indulge);
+  assert.ok(!offered.includes("12:00"), "12:00 starts inside the lesson's padding");
+  assert.ok(offered.includes("12:30"));
+  // ...and a block-out still counts its full length, padding included
+  const blocked = fakeSupabase({ blocked_periods: [{ start_datetime: iso(SUN, "16:00"), end_datetime: iso(SUN, "16:30") }] });
+  assert.ok(!(await sunList(blocked, SVC.privateLesson)).includes("14:00"), "padding 4:00–4:30 overlaps the block-out");
+});
+
+test("opening hours: nothing starts before opening", () => {
+  assert.equal(withinOpeningHours({ time: "09:30", durationMinutes: 30, openTime: "10:00", closeTime: "16:00" }), false);
+  assert.equal(withinOpeningHours({ time: "10:00", durationMinutes: 30, openTime: "10:00", closeTime: "16:00" }), true);
 });

@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendAppointmentConfirmation, sendAdminBookingNotification } from "@/lib/notifications";
 import { hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
+import { paymentLinkDepositCents } from "@/lib/makeup-lessons";
 import type { Service } from "@/types";
-
-const DEPOSIT_CENTS = 5000;
 
 function supabase() {
   return createClient(
@@ -73,6 +72,8 @@ export async function POST(
   // Validate amountPaidCents against deposit rules
   // Owed = price less any coupon / loyalty reward applied when Amanda booked it.
   const category = appointment.services?.category ?? "";
+  // $100 for the make-up lessons, $50 for everything else (unchanged).
+  const DEPOSIT_CENTS = paymentLinkDepositCents(appointment.services?.name);
   const priceCents = appointment.amount_cents - (appointment.discount_cents ?? 0) - (appointment.loyalty_discount_cents ?? 0);
   const hasDepositOption = serviceHasDepositOption({ category: category as Service["category"] }) && priceCents > DEPOSIT_CENTS;
 

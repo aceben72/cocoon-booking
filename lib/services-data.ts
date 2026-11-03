@@ -22,7 +22,7 @@ export const CATEGORY_META: CategoryMeta[] = [
   {
     id: "make-up",
     label: "Make-Up",
-    description: "Professional make-up application and personalised make-up coaching.",
+    description: "Professional make-up application and private make-up lessons.",
     icon: "✦",
   },
   {
@@ -55,7 +55,33 @@ export const SERVICES: Service[] = [
 
   // Make-Up
   { id: "professional-makeup", category: "make-up", name: "Professional Make-Up Application", duration_minutes: 75, padding_minutes: 45, price_cents: 13900, cash_price_cents: 13500, active: true },
-  { id: "makeup-class", category: "make-up", name: "Personal Make Up Class", duration_minutes: 90, padding_minutes: 30, price_cents: 16400, cash_price_cents: 15900, active: true },
+  // Private make-up lessons (Nov 2026): booked like a facial, $100 deposit.
+  // Names must match services.name (POST /api/bookings looks the row up by
+  // name) and lib/makeup-lessons.ts. Ids kept from before so links still work.
+  {
+    id: "makeup-class",
+    category: "make-up",
+    name: "Private Make-Up Lesson",
+    duration_minutes: 120,
+    padding_minutes: 30,
+    price_cents: 27900,
+    cash_price_cents: 27100,
+    deposit_cents: 10000,
+    description: "A relaxed two-hour, one-on-one lesson in my private Gainsborough Greens studio in Pimpama, built around your face, your skin and how you like to wear make-up.",
+    active: true,
+  },
+  {
+    id: "me-and-a-friend-makeup-lesson",
+    category: "make-up",
+    name: "Me & a Friend Make-Up Lesson",
+    duration_minutes: 150,
+    padding_minutes: 30,
+    price_cents: 34900,
+    cash_price_cents: 33900,
+    deposit_cents: 10000,
+    description: "A private two-and-a-half-hour make-up lesson for two in my Gainsborough Greens studio in Pimpama. $349 for the two of you.",
+    active: true,
+  },
 
   // Treatment Plans (client-facing)
   {
@@ -83,15 +109,18 @@ export const SERVICES: Service[] = [
     active: true,
   },
 
-  // Mother & Daughter Make-Up Class (private booking — 2 hrs, no deposit)
+  // Mother & Daughter Make-Up Class (private lesson, $100 deposit). Price is
+  // per pair; extra daughters (0–2, no extra time) in lib/makeup-lessons.ts.
   {
     id: "mother-daughter-make-up-class",
     category: "mother-daughter",
-    name: "Mother Daughter Make-Up Class",
-    duration_minutes: 120,
+    name: "Mother & Daughter Make-Up Class",
+    duration_minutes: 150,
     padding_minutes: 30,
-    price_cents: 18500,
-    cash_price_cents: 17900,
+    price_cents: 34900,
+    cash_price_cents: 33900,
+    deposit_cents: 10000,
+    description: "A private two-and-a-half-hour class for mothers and daughters aged 9 to 90 in my Gainsborough Greens studio in Pimpama. $349 per pair, extra daughters $99.",
     active: true,
   },
 

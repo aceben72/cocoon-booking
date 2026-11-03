@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SERVICES } from "@/lib/services-data";
 import { openingHoursFor, DEFAULT_AVAILABILITY } from "@/lib/availability";
-import { getTimeList, bookingLengthMinutes } from "@/lib/booking-conflicts";
+import { getTimeList } from "@/lib/booking-conflicts";
 
 /**
  * GET /api/availability?serviceId=xxx&date=YYYY-MM-DD
@@ -87,7 +87,7 @@ async function getSlotsForDate(
   // hasBookingConflict uses, so a slot shown here passes the submit check.
   return getTimeList(supabase, {
     date,
-    lengthMinutes: bookingLengthMinutes(service),
+    service,
     openTime: hours.openTime,
     closeTime: hours.closeTime,
     nowMs: Date.now(),

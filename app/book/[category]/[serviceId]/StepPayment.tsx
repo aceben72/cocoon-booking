@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import type { Service, ClientDetailsForm } from "@/types";
-import { formatPrice, formatDuration, formatTime, serviceCashSavingText, serviceCashSavingCents, hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
+import { formatPrice, formatDuration, formatTime, bookingCashSavingText, bookingCashSavingCents, hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
+import { bookingPriceCents, bookingCashPriceCents, normaliseExtraDaughters } from "@/lib/makeup-lessons";
 import { computeBookingPricing } from "@/lib/booking-pricing";
 import { isLoyaltyServiceSlug } from "@/lib/loyalty-rules";
 
@@ -65,6 +66,12 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
   const DEPOSIT_CENTS = service.deposit_cents ?? DEFAULT_DEPOSIT_CENTS;
   const [paymentMode, setPaymentMode] = useState<"full" | "deposit">("full");
 
+  // Whole-booking prices: the service, plus any Mother & Daughter extras.
+  const extraDaughters = normaliseExtraDaughters(service.name, client.lesson?.extraDaughters);
+  const priceCents = bookingPriceCents(service, extraDaughters);
+  const cashPriceCents = bookingCashPriceCents(service, extraDaughters);
+  const cashSavingText = bookingCashSavingText(service, priceCents, cashPriceCents);
+
   // ── Promotions state ──────────────────────────────────────────
   const [giftCardCode, setGiftCardCode] = useState("");
   const [giftCardValidating, setGiftCardValidating] = useState(false);
@@ -117,7 +124,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
   // Facial package covers the full amount (trumps all other discounts)
   const facialPackageCoversAll = appliedFacialPackage !== null;
   const pricingFor = (payDeposit: boolean) => computeBookingPricing({
-    priceCents: service.price_cents,
+    priceCents,
     payDeposit,
     depositCents: DEPOSIT_CENTS,
     couponDiscountCents: appliedCoupon?.discountCents ?? 0,
@@ -134,7 +141,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
   // Remainder due on the day if the client picks the deposit option — shown
   // on the deposit option before they choose, so independent of paymentMode.
   const depositCardRemainderCents = pricingFor(true).balanceDueCents;
-  const cashSavingCents = serviceCashSavingCents(service);
+  const cashSavingCents = bookingCashSavingCents(service, priceCents, cashPriceCents);
   const depositRemainderText = hasDepositOption && cashSavingCents > 0 && depositCardRemainderCents > 0
     ? `Remainder ${formatPrice(depositCardRemainderCents)} on the day, or ${formatPrice(Math.max(0, depositCardRemainderCents - cashSavingCents))} with cash, PayID or direct deposit`
     : null;
@@ -255,7 +262,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
         body: JSON.stringify({
           code: couponCode,
           category: service.category,
-          amountCents: service.price_cents,
+          amountCents: priceCents,
         }),
       });
       const data = await res.json();
@@ -396,13 +403,16 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
           <SummaryRow label="Date" value={displayDate} />
           <SummaryRow label="Time" value={formatTime(time)} />
           <SummaryRow label="Name" value={`${client.first_name} ${client.last_name}`} />
-          <SummaryRow label="Price" value={formatPrice(service.price_cents)} />
+          {extraDaughters > 0 && (
+            <SummaryRow label="Extra daughters" value={String(extraDaughters)} />
+          )}
+          <SummaryRow label="Price" value={formatPrice(priceCents)} />
           {/* Cash saving only applies to a balance paid on the day, so hide it
               when the whole amount is being charged to card now. */}
           {paymentMode === "deposit" && !facialPackageCoversAll &&
-            serviceCashSavingText(service) && (
+            cashSavingText && (
             <p className="text-xs text-[#9a8f87] font-light text-right -mt-2">
-              {serviceCashSavingText(service)}
+              {cashSavingText}
             </p>
           )}
           <div className="pt-3 border-t border-[#f0ebe4] space-y-1.5">
@@ -410,7 +420,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
             {(couponDiscountCents > 0 || loyaltyDiscountCents > 0 || giftCardApplied > 0) && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[#9a8f87] font-light">Service total</span>
-                <span className="text-[#1a1a1a] font-light">{formatPrice(service.price_cents)}</span>
+                <span className="text-[#1a1a1a] font-light">{formatPrice(priceCents)}</span>
               </div>
             )}
             {/* Coupon discount line */}
@@ -444,7 +454,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
                 <span className="text-emerald-700 font-light">
                   Facial package ({appliedFacialPackage.code})
                 </span>
-                <span className="text-emerald-700 font-light">−{formatPrice(service.price_cents)}</span>
+                <span className="text-emerald-700 font-light">−{formatPrice(priceCents)}</span>
               </div>
             )}
             {/* Deposit mode breakdown */}
@@ -493,7 +503,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
               id="pay-full"
               selected={paymentMode === "full"}
               onClick={() => setPaymentMode("full")}
-              title={`Pay in full — ${formatPrice(service.price_cents - couponDiscountCents - loyaltyDiscountCents)} today`}
+              title={`Pay in full — ${formatPrice(priceCents - couponDiscountCents - loyaltyDiscountCents)} today`}
             />
             <PaymentOption
               id="pay-deposit"

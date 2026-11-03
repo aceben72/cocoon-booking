@@ -66,17 +66,14 @@ export default async function MotherDaughterClassesPage() {
         {sessions.length === 0 ? (
           <div className="bg-white rounded-2xl border border-[#e8e0d8] p-10 text-center">
             <p className="font-[family-name:var(--font-cormorant)] text-2xl italic text-[#044e77] mb-3">
-              No classes scheduled yet
+              Now booked privately
             </p>
             <p className="text-sm text-[#7a6f68] font-light">
-              No Mother &amp; Daughter classes are currently scheduled. Please check back soon or{" "}
-              <a
-                href="mailto:amanda@cocoonskinandbeauty.com.au"
-                className="text-[#044e77] hover:underline"
-              >
-                contact Amanda
-              </a>{" "}
-              to register your interest.
+              Mother &amp; Daughter classes are now private bookings at a time that suits you.{" "}
+              <Link href="/book/mother-daughter/mother-daughter-make-up-class" className="text-[#044e77] hover:underline">
+                Book a Mother &amp; Daughter Make-Up Class
+              </Link>
+              .
             </p>
           </div>
         ) : (

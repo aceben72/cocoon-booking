@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
 import BookingProgress from "@/components/BookingProgress";
 import { CATEGORY_META } from "@/lib/services-data";
 import { LOYALTY_OFFER_TEXT, LOYALTY_SMALL_PRINT } from "@/lib/loyalty-rules";
@@ -7,7 +8,30 @@ import DeepLinkGate from "./DeepLinkGate";
 
 export const dynamic = "force-dynamic";
 
-export default function SelectCategoryPage() {
+/**
+ * Group classes are retired (Nov 2026) but already-scheduled sessions stay
+ * bookable. Only link to the session list while one is still open to book,
+ * so the card disappears once the last session has passed or filled. A
+ * lookup failure hides the card rather than the page.
+ */
+async function hasOpenGroupSession(): Promise<boolean> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return false;
+  const { data, error } = await createClient(url, key)
+    .from("class_sessions_with_availability")
+    .select("id")
+    .eq("active", true)
+    .in("class_type", ["masterclass", "advanced_class"])
+    .gt("spots_remaining", 0)
+    .gte("start_datetime", new Date().toISOString())
+    .limit(1);
+  if (error) console.error("[book] group session lookup failed:", error);
+  return !error && (data?.length ?? 0) > 0;
+}
+
+export default async function SelectCategoryPage() {
+  const showGroupClasses = await hasOpenGroupSession();
   return (
     <>
       {/* Reads ?category / ?service params and redirects when valid */}
@@ -55,7 +79,8 @@ export default function SelectCategoryPage() {
             </Link>
           ))}
 
-          {/* Make-Up Classes — special card linking to session browser */}
+          {/* Group Make-Up Classes — retired; shown only while a scheduled session is still open */}
+          {showGroupClasses && (
           <Link
             href="/book/make-up-classes"
             className="group bg-white rounded-2xl border border-[#e8e0d8] p-7 flex flex-col gap-3
@@ -64,10 +89,10 @@ export default function SelectCategoryPage() {
             <div className="text-[#fbb040] text-2xl">✦</div>
             <h2 className="font-[family-name:var(--font-cormorant)] text-2xl font-medium italic text-[#044e77]
                            group-hover:text-[#033d5c] transition-colors">
-              Make-Up Classes
+              Group Make-Up Classes
             </h2>
             <p className="text-sm text-[#7a6f68] font-light leading-relaxed">
-              Learn professional techniques in a fun, relaxed group setting.
+              The last scheduled group sessions — book a spot while they last.
             </p>
             <span className="mt-auto inline-flex items-center gap-1 text-sm text-[#044e77] font-medium
                              group-hover:gap-2 transition-all">
@@ -77,6 +102,7 @@ export default function SelectCategoryPage() {
               </svg>
             </span>
           </Link>
+          )}
 
           {/* Mother & Daughter Make-Up Class — links directly to booking wizard (one service, no list step)
                Deep link: ?category=mother-daughter&service=mother-daughter-make-up-class */}
@@ -91,7 +117,7 @@ export default function SelectCategoryPage() {
               Mother &amp; Daughter Make-Up Class
             </h2>
             <p className="text-sm text-[#7a6f68] font-light leading-relaxed">
-              A private 2-hour make-up class for mothers and daughters — tailored to both of you. Book any time that suits you.
+              A private two-and-a-half-hour class for mothers and daughters aged 9 to 90 in my Gainsborough Greens studio in Pimpama. $349 per pair, extra daughters $99.
             </p>
             <span className="mt-auto inline-flex items-center gap-1 text-sm text-[#044e77] font-medium
                              group-hover:gap-2 transition-all">

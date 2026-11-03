@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendAppointmentReminder, sendClassReminder } from "@/lib/notifications";
+import { isMakeupLesson } from "@/lib/makeup-lessons";
 
 function supabase() {
   return createClient(
@@ -158,14 +159,14 @@ export async function GET(request: NextRequest) {
   if (completedErr) {
     console.error("[cron/reminders] follow-up query failed:", completedErr.message);
   } else {
-    const EXCLUDE_SERVICES = ["Make-Up Class", "Mother Daughter Make-Up Class"];
     const resendKey = process.env.RESEND_API_KEY;
 
     for (const appt of completedAppts ?? []) {
       const client  = appt.clients  as unknown as { first_name: string; email: string } | null;
       const service = appt.services as unknown as { name: string } | null;
 
-      if (!service || EXCLUDE_SERVICES.includes(service.name)) {
+      // Make-up lessons get the Mailchimp post-makeup-class journey instead.
+      if (!service || isMakeupLesson(service.name)) {
         console.log(`[cron/reminders] follow-up ${appt.id} — skipped (make-up class)`);
         continue;
       }

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { CLASS_TYPE_LABELS } from "@/lib/class-types";
 import type { ClassType } from "@/types";
@@ -31,44 +30,13 @@ function formatAEST(iso: string) {
   }).format(new Date(iso));
 }
 
-function aestInputToISO(date: string, time: string) {
-  return new Date(`${date}T${time}:00+10:00`).toISOString();
-}
-
-// 30-minute time options, 7:00 am – 7:00 pm
-const CLASS_TIME_OPTIONS: { value: string; label: string }[] = (() => {
-  const opts: { value: string; label: string }[] = [];
-  for (let h = 7; h <= 19; h++) {
-    for (const m of [0, 30]) {
-      if (h === 19 && m === 30) break;
-      const hh = h.toString().padStart(2, "0");
-      const mm = m === 0 ? "00" : "30";
-      const hour12 = h > 12 ? h - 12 : h;
-      const ampm = h < 12 ? "am" : "pm";
-      opts.push({ value: `${hh}:${mm}`, label: `${hour12}:${mm} ${ampm}` });
-    }
-  }
-  return opts;
-})();
-
 export function ClassesManager() {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
   const [upcoming, setUpcoming]   = useState<Session[]>([]);
   const [past, setPast]           = useState<Session[]>([]);
   const [cancelled, setCancelled] = useState<Session[]>([]);
   const [loading, setLoading]     = useState(true);
   const [showPast, setShowPast]         = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
-
-  // Create form
-  const [classType, setClassType]      = useState("masterclass");
-  const [startDate, setStartDate]      = useState("");
-  const [startTime, setStartTime]      = useState("");
-  const [capacity, setCapacity]        = useState(4);
-  const [description, setDescription] = useState("");
-  const [creating, setCreating]        = useState(false);
-  const [formError, setFormError]      = useState("");
 
   async function load() {
     setLoading(true);
@@ -83,36 +51,6 @@ export function ClassesManager() {
   }
 
   useEffect(() => { load(); }, []);
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setFormError("");
-    setCreating(true);
-
-    const res = await fetch("/api/admin/classes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        class_type:     classType,
-        start_datetime: aestInputToISO(startDate, startTime),
-        capacity,
-        description:    description || null,
-      }),
-    });
-
-    if (res.ok) {
-      setStartDate("");
-      setStartTime("");
-      setCapacity(4);
-      setDescription("");
-      await load();
-      startTransition(() => router.refresh());
-    } else {
-      const { error } = await res.json();
-      setFormError(error ?? "Failed to create session");
-    }
-    setCreating(false);
-  }
 
   const booked = (s: Session) => s.capacity - s.spots_remaining;
 
@@ -215,95 +153,12 @@ export function ClassesManager() {
 
   return (
     <div className="space-y-6">
-      {/* Create session form */}
-      <div className="bg-white rounded-xl border border-[#f0ebe4] p-6">
-        <h2 className="text-sm font-medium text-[#1a1a1a] uppercase tracking-wider mb-4">
-          Create New Session
-        </h2>
-        <form onSubmit={handleCreate} className="flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="block text-xs uppercase tracking-wider text-[#7a6f68] mb-1">Class Type</label>
-            <select
-              value={classType}
-              onChange={(e) => setClassType(e.target.value)}
-              suppressHydrationWarning
-              className="h-10 border border-[#ddd8d2] rounded-lg px-3 text-sm bg-white
-                         focus:outline-none focus:border-[#044e77]"
-            >
-              <option value="masterclass">{CLASS_TYPE_LABELS.masterclass}</option>
-              <option value="advanced_class">{CLASS_TYPE_LABELS.advanced_class}</option>
-              <option value="mother_daughter">{CLASS_TYPE_LABELS.mother_daughter}</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs uppercase tracking-wider text-[#7a6f68] mb-1">
-              Start Date & Time (AEST)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-                suppressHydrationWarning
-                className="h-10 border border-[#ddd8d2] rounded-lg px-3 text-sm bg-white
-                           focus:outline-none focus:border-[#044e77]"
-              />
-              <select
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                required
-                suppressHydrationWarning
-                className="h-10 border border-[#ddd8d2] rounded-lg px-3 text-sm bg-white
-                           focus:outline-none focus:border-[#044e77]"
-              >
-                <option value="">— time —</option>
-                {CLASS_TIME_OPTIONS.map(({ value, label: lbl }) => (
-                  <option key={value} value={value}>{lbl}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs uppercase tracking-wider text-[#7a6f68] mb-1">
-              Capacity
-            </label>
-            <input
-              type="number"
-              value={capacity}
-              onChange={(e) => setCapacity(Math.max(1, parseInt(e.target.value) || 1))}
-              min={1}
-              max={20}
-              required
-              suppressHydrationWarning
-              className="w-20 h-10 border border-[#ddd8d2] rounded-lg px-3 text-sm text-center
-                         focus:outline-none focus:border-[#044e77]"
-            />
-          </div>
-          <div className="flex-1 min-w-56">
-            <label className="block text-xs uppercase tracking-wider text-[#7a6f68] mb-1">
-              Description (optional)
-            </label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Suitable for all skill levels"
-              suppressHydrationWarning
-              className="w-full h-10 border border-[#ddd8d2] rounded-lg px-3 text-sm
-                         focus:outline-none focus:border-[#044e77]"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={creating}
-            className="h-10 bg-[#044e77] text-white rounded-lg px-5 text-sm
-                       hover:bg-[#033d5e] transition-colors disabled:opacity-60"
-          >
-            {creating ? "Creating…" : "Create"}
-          </button>
-        </form>
-        {formError && <p className="text-red-600 text-sm mt-3">{formError}</p>}
+      {/* Group classes retired Nov 2026: the make-up lessons are now private
+          bookings (Private, Me & a Friend, Mother & Daughter) made like a facial.
+          Sessions already scheduled stay here so they can be run and completed. */}
+      <div className="bg-[#f8f5f2] rounded-xl border border-[#f0ebe4] px-6 py-4 text-sm text-[#5a504a]">
+        Group classes are no longer scheduled. Make-up lessons are now private bookings — add them from
+        Appointments. Sessions already on the calendar stay below and still work as before.
       </div>
 
       {/* Upcoming sessions */}
@@ -317,7 +172,7 @@ export function ClassesManager() {
           </div>
         ) : upcoming.length === 0 ? (
           <div className="bg-white rounded-xl border border-[#f0ebe4] p-8 text-center text-sm text-[#7a6f68]">
-            No upcoming sessions. Create one above.
+            No upcoming sessions.
           </div>
         ) : (
           <SessionTable sessions={upcoming} />

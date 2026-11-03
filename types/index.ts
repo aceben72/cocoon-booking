@@ -1,3 +1,5 @@
+import type { LessonDetailsInput } from "@/lib/makeup-lessons";
+
 // ─── Database Row Types ────────────────────────────────────────────────────
 
 export type ServiceCategory =
@@ -81,6 +83,8 @@ export interface ClientDetailsForm {
   mobile: string;
   notes: string;
   is_new_client: boolean;
+  /** Private make-up lessons only: extra daughters, learning levels, friend's details. */
+  lesson?: LessonDetailsInput;
 }
 
 export interface TimeSlot {

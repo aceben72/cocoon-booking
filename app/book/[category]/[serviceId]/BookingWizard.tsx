@@ -189,6 +189,7 @@ export default function BookingWizard({ service, categoryLabel, deepLinked = fal
             }}
             initial={clientDetails}
             onDraftChange={handleDetailsDraft}
+            serviceName={service.name}
           />
         )}
 

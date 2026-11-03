@@ -1,15 +1,24 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
-import { aestToUTC, normaliseMobile, hasDepositOption, serviceCashSavingText } from "@/lib/utils";
+import { aestToUTC, normaliseMobile, hasDepositOption, bookingCashSavingText } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
 import { sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
-import { hasBookingConflict, bookingLengthMinutes } from "@/lib/booking-conflicts";
+import { hasBookingConflict, bookingLengthMinutes, withinOpeningHours } from "@/lib/booking-conflicts";
+import { openingHoursFor } from "@/lib/availability";
 import { computeBookingPricing } from "@/lib/booking-pricing";
 import { onlineBookingPaymentRows } from "@/lib/complete-payment";
 import { getLoyaltyStatusByEmail, isLoyaltyServiceSlug, LOYALTY_REWARD_CENTS } from "@/lib/loyalty";
+import {
+  bookingPriceCents,
+  bookingCashPriceCents,
+  isMakeupLesson,
+  lessonAttendeeRows,
+  lessonSummaryLines,
+  normaliseExtraDaughters,
+} from "@/lib/makeup-lessons";
 import type { ClientDetailsForm, Service } from "@/types";
 
 interface BookingRequest {
@@ -58,6 +67,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Service not found" }, { status: 404 });
   }
 
+  // Whole-booking price: the service plus any Mother & Daughter extra
+  // daughters (no extra time). This is what amount_cents snapshots.
+  const extraDaughters = normaliseExtraDaughters(service.name, client?.lesson?.extraDaughters);
+  const priceCents = bookingPriceCents(service, extraDaughters);
+
   // Validate mobile
   const mobile = normaliseMobile(client.mobile);
   if (!mobile) {
@@ -70,6 +84,16 @@ export async function POST(request: NextRequest) {
   const totalMins = bookingLengthMinutes(service);
   const endDate = new Date(new Date(startISO).getTime() + totalMins * 60 * 1000);
   const endISO = endDate.toISOString();
+
+  // Opening hours: same rule as the time list (lib/slot-rules.ts) — the
+  // service finishes by closing; its padding may run past it.
+  const hours = openingHoursFor(date);
+  if (!hours || !withinOpeningHours({ time, durationMinutes: service.duration_minutes, ...hours })) {
+    return NextResponse.json(
+      { error: "That time is outside opening hours. Please choose another.", code: "slot_unavailable" },
+      { status: 400 },
+    );
+  }
 
   // Check 2h minimum notice
   const now = new Date();
@@ -149,12 +173,12 @@ export async function POST(request: NextRequest) {
   let couponDiscountCents = 0;
 
   if (!facialPackagePaidInFull && couponCode) {
-    const couponResult = await validateCoupon(couponCode, service.category, service.price_cents);
+    const couponResult = await validateCoupon(couponCode, service.category, priceCents);
     if (!couponResult.valid || !couponResult.coupon) {
       return NextResponse.json({ error: `Discount code: ${couponResult.error}` }, { status: 400 });
     }
     couponId = couponResult.coupon.id;
-    couponDiscountCents = calculateDiscount(couponResult.coupon, service.price_cents);
+    couponDiscountCents = calculateDiscount(couponResult.coupon, priceCents);
   }
 
   let giftCardId: string | null = null;
@@ -200,7 +224,7 @@ export async function POST(request: NextRequest) {
   );
 
   const pricing = computeBookingPricing({
-    priceCents: service.price_cents,
+    priceCents,
     payDeposit,
     depositCents: DEPOSIT_CENTS,
     couponDiscountCents,
@@ -267,7 +291,7 @@ export async function POST(request: NextRequest) {
     chargeNowCents: amountToChargeCents,
     giftCardAppliedCents,
     paidViaFacialPackage: facialPackagePaidInFull,
-    priceCents: service.price_cents,
+    priceCents,
     squarePaymentId,
   });
   const storedAmountPaidCents = paymentRows.reduce((sum, r) => sum + r.amountCents, 0);
@@ -331,7 +355,8 @@ export async function POST(request: NextRequest) {
       end_datetime: endISO,
       status: "confirmed",
       square_payment_id: squarePaymentId,
-      amount_cents: service.price_cents,
+      amount_cents: priceCents,
+      extra_daughters: extraDaughters,
       amount_paid_cents: storedAmountPaidCents,
       discount_cents: totalDiscountCents,
       loyalty_discount_cents: loyaltyDiscountCents,
@@ -365,6 +390,19 @@ export async function POST(request: NextRequest) {
       // The booking and charge stand; flag loudly so the payment can be added by hand.
       console.error("[bookings] PAYMENT ROW INSERT FAILED — add manually:", appointment.id, paymentRows, payErr);
     }
+  }
+
+  // ── Lesson attendees (levels, friend's details) ─────────────────────────
+  // One row per person. The friend gets no client record or Mailchimp
+  // contact — Amanda adds them by hand. A failure here never undoes the booking.
+  if (isMakeupLesson(service.name)) {
+    const attendees = lessonAttendeeRows(service.name, client.lesson).map((r) => ({
+      ...r,
+      mobile: r.mobile ? (normaliseMobile(r.mobile) ?? r.mobile) : null,
+      appointment_id: appointment.id,
+    }));
+    const { error: attErr } = await supabase.from("appointment_attendees").insert(attendees);
+    if (attErr) console.error("[bookings] attendee insert failed — lesson details lost:", appointment.id, attendees, attErr);
   }
 
   // ── Record coupon use ─────────────────────────────────────────────────
@@ -454,8 +492,8 @@ export async function POST(request: NextRequest) {
   // confirmation email from sending below.
   let intakeFormUrl: string | null = null;
 
-  const INTAKE_EXCLUDED_SERVICES = ["Make-Up Class", "Mother Daughter Make-Up Class"];
-  if (client.is_new_client && !INTAKE_EXCLUDED_SERVICES.includes(service.name)) {
+  // The skin intake form isn't for make-up lessons.
+  if (client.is_new_client && !isMakeupLesson(service.name)) {
     try {
       const intakeToken = randomBytes(32).toString("hex");
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -493,9 +531,17 @@ export async function POST(request: NextRequest) {
   // ── Send confirmation notifications ──────────────────────────────────
   // Awaited before returning so Vercel does not freeze the execution
   // context before the outbound Resend/ClickSend requests complete.
+  // Lesson details go to Amanda's booking email with the client's notes.
+  const lessonLines = isMakeupLesson(service.name)
+    ? lessonSummaryLines(lessonAttendeeRows(service.name, client.lesson), extraDaughters)
+    : [];
+  const adminNotes = [client.notes || null, ...lessonLines].filter(Boolean).join("\n") || null;
+
   await sendConfirmationNotifications({
     appointmentId: appointment.id,
     service,
+    priceCents,
+    extraDaughters,
     client: { ...client, mobile },
     startISO,
     amountPaidCents,
@@ -503,7 +549,7 @@ export async function POST(request: NextRequest) {
     loyaltyDiscountCents,
     paidViaFacialPackage: facialPackagePaidInFull,
     isNewClient: !!client.is_new_client,
-    notes: client.notes || null,
+    notes: adminNotes,
     intakeFormUrl,
   }).catch(console.error);
 
@@ -511,7 +557,7 @@ export async function POST(request: NextRequest) {
     appointmentId: appointment.id,
     service: { name: service.name, duration_minutes: service.duration_minutes },
     startISO,
-    amountCents: service.price_cents,
+    amountCents: priceCents,
     amountPaidCents,
     discountCents: totalDiscountCents,
     loyaltyDiscountCents,
@@ -528,6 +574,8 @@ export async function POST(request: NextRequest) {
 async function sendConfirmationNotifications(params: {
   appointmentId: string;
   service: Service;
+  priceCents: number;
+  extraDaughters: number;
   client: { first_name: string; last_name: string; email: string; mobile: string; notes?: string | null };
   startISO: string;
   amountPaidCents: number;
@@ -538,7 +586,7 @@ async function sendConfirmationNotifications(params: {
   notes?: string | null;
   intakeFormUrl: string | null;
 }) {
-  const { service, client, startISO, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, notes, intakeFormUrl } = params;
+  const { service, priceCents, extraDaughters, client, startISO, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, notes, intakeFormUrl } = params;
 
   const displayDate = new Intl.DateTimeFormat("en-AU", {
     timeZone: "Australia/Brisbane",
@@ -564,7 +612,7 @@ async function sendConfirmationNotifications(params: {
     let emailHtml: string;
     try {
       console.log("[bookings] building email HTML");
-      emailHtml = buildConfirmationEmail({ client, service, displayDate, displayTime, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, intakeFormUrl });
+      emailHtml = buildConfirmationEmail({ client, service, priceCents, extraDaughters, displayDate, displayTime, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, intakeFormUrl });
       console.log("[bookings] email HTML built, length:", emailHtml.length);
     } catch (buildErr) {
       console.error("[bookings] buildConfirmationEmail threw:", buildErr);
@@ -640,6 +688,8 @@ async function sendConfirmationNotifications(params: {
 function buildConfirmationEmail(params: {
   client: { first_name: string; last_name: string };
   service: Service;
+  priceCents: number;
+  extraDaughters: number;
   displayDate: string;
   displayTime: string;
   amountPaidCents: number;
@@ -649,15 +699,15 @@ function buildConfirmationEmail(params: {
   isNewClient: boolean;
   intakeFormUrl: string | null;
 }) {
-  const { client, service, displayDate, displayTime, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
+  const { client, service, priceCents, extraDaughters, displayDate, displayTime, amountPaidCents, discountCents, loyaltyDiscountCents, paidViaFacialPackage, isNewClient, intakeFormUrl } = params;
   const paidDisplay = paidViaFacialPackage
     ? "Paid via Facial Package"
     : amountPaidCents === 0
       ? "Covered by promotions"
       : `$${(amountPaidCents / 100).toFixed(0)}`;
   // Cash saving only applies to a balance still to be paid on the day.
-  const balanceOwing = !paidViaFacialPackage && amountPaidCents < service.price_cents - discountCents - loyaltyDiscountCents;
-  const cashSaving = balanceOwing ? serviceCashSavingText(service) : null;
+  const balanceOwing = !paidViaFacialPackage && amountPaidCents < priceCents - discountCents - loyaltyDiscountCents;
+  const cashSaving = balanceOwing ? bookingCashSavingText(service, priceCents, bookingCashPriceCents(service, extraDaughters)) : null;
   const duration = service.duration_minutes < 60
     ? `${service.duration_minutes} min`
     : `${Math.floor(service.duration_minutes / 60)} hr${service.duration_minutes % 60 ? ` ${service.duration_minutes % 60} min` : ""}`;
@@ -695,6 +745,7 @@ function buildConfirmationEmail(params: {
                 <td style="padding-bottom:12px;">
                   <span style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#b0a499;">Service</span><br>
                   <strong style="font-size:16px;color:#1a1a1a;">${service.name}</strong>
+                  ${extraDaughters > 0 ? `<br><span style="font-size:13px;color:#7a6f68;">Plus ${extraDaughters} extra daughter${extraDaughters > 1 ? "s" : ""}</span>` : ""}
                 </td>
               </tr>
               <tr>

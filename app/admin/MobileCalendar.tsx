@@ -1,5 +1,6 @@
 "use client";
 
+import { LessonDetails, type LessonAttendee } from "@/components/LessonDetails";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { NewBookingForm } from "./appointments/NewBookingForm";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
@@ -20,6 +21,8 @@ interface CalendarAppointment {
   services: { name: string; category: string; duration_minutes: number; padding_minutes: number } | null;
   clients: { first_name: string; last_name: string; email: string; mobile: string | null; is_new_client?: boolean } | null;
   loyalty?: AppointmentLoyalty | null;
+  extra_daughters?: number;
+  appointment_attendees?: LessonAttendee[];
 }
 
 interface CalendarBlockedPeriod {
@@ -1087,6 +1090,11 @@ export default function MobileCalendar() {
                   <span className="text-[#1a1a1a]">{selectedAppt.services.duration_minutes} min</span>
                 </div>
               )}
+              <LessonDetails
+                serviceName={selectedAppt.services?.name}
+                extraDaughters={selectedAppt.extra_daughters}
+                attendees={selectedAppt.appointment_attendees}
+              />
               {selectedAppt.notes && (
                 <div className="flex justify-between gap-4">
                   <span className="text-[#9a8f87] shrink-0">Notes</span>

@@ -1,3 +1,4 @@
+import type { LessonAttendee } from "@/components/LessonDetails";
 import { createClient } from "@supabase/supabase-js";
 import { AppointmentTable } from "./AppointmentTable";
 import { parseAESTDate } from "@/lib/utils";
@@ -41,6 +42,8 @@ interface RawAppointment {
   } | null;
   intake_forms: { id: string; status: string; token: string }[];
   facial_package_redemptions: { id: string }[];
+  extra_daughters?: number;
+  appointment_attendees?: LessonAttendee[];
   loyalty: AppointmentLoyalty | null;
 }
 
@@ -81,8 +84,10 @@ async function getAppointments(status: string, from: string, to: string): Promis
     .select(`
       id, client_id, start_datetime, end_datetime, status, amount_cents, amount_paid_cents, discount_cents, loyalty_discount_cents, cash_discount_cents,
       square_payment_id, payment_link_token, notes, created_at,
+      extra_daughters,
       services ( name, category, duration_minutes, padding_minutes ),
       clients ( first_name, last_name, email, mobile, is_new_client ),
+      appointment_attendees ( role, position, experience_level, name, email, mobile ),
       intake_forms ( id, status, token ),
       facial_package_redemptions ( id )
     `)

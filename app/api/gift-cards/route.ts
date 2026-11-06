@@ -16,7 +16,13 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
   const { data, error } = await supabase()
     .from("gift_cards")
-    .select("*")
+    .select(`
+      *,
+      gift_card_redemptions (
+        id, amount_cents, redeemed_at, appointment_id,
+        appointments ( start_datetime, services ( name ), clients ( first_name, last_name ) )
+      )
+    `)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

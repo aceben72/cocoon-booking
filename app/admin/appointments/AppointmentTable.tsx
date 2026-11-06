@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { NewBookingForm } from "./NewBookingForm";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
 import { CompletePaymentPanel } from "@/components/CompletePaymentPanel";
+import { paidBalanceText } from "@/lib/complete-payment";
 import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
 import { bookingLengthMinutes } from "@/lib/slot-rules";
 
@@ -1500,14 +1501,20 @@ export function AppointmentTable({
                         {appt.facial_package_redemptions?.length > 0 ? (
                           <div className="text-xs font-medium text-emerald-700 whitespace-nowrap">Facial Package</div>
                         ) : (
-                          <>
-                            <div className="font-medium text-[#1a1a1a]">{formatPrice(appt.amount_paid_cents)}</div>
-                            {outstandingCents(appt) > 0 && (
-                              <div className="text-xs text-amber-600 font-medium whitespace-nowrap">
-                                {formatPrice(outstandingCents(appt))} outstanding
-                              </div>
-                            )}
-                          </>
+                          outstandingCents(appt) > 0 && appt.amount_paid_cents > 0 ? (
+                            <div className="text-xs text-amber-700 font-medium">
+                              {paidBalanceText(appt.amount_paid_cents, outstandingCents(appt))}
+                            </div>
+                          ) : (
+                            <>
+                              <div className="font-medium text-[#1a1a1a]">{formatPrice(appt.amount_paid_cents)}</div>
+                              {outstandingCents(appt) > 0 && (
+                                <div className="text-xs text-amber-600 font-medium whitespace-nowrap">
+                                  {formatPrice(outstandingCents(appt))} balance owing
+                                </div>
+                              )}
+                            </>
+                          )
                         )}
                       </td>
                       <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
@@ -1648,9 +1655,9 @@ export function AppointmentTable({
                                   </div>
                                   {outstandingCents(appt) > 0 && (
                                     <div>
-                                      <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Outstanding</div>
+                                      <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Balance</div>
                                       <div className="text-amber-600 font-medium">
-                                        {formatPrice(outstandingCents(appt))}
+                                        {paidBalanceText(appt.amount_paid_cents, outstandingCents(appt))}
                                       </div>
                                     </div>
                                   )}

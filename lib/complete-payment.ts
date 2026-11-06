@@ -47,7 +47,9 @@ export interface CompletionResult {
   /** Totals to store on the appointment. */
   cashDiscountCents: number;
   loyaltyDiscountCents: number;
-  /** Owing before this payment, after all discounts. */
+  /** Gift card value redeemed in this completion (0 if none). */
+  giftCardCents: number;
+  /** Owing before this payment (after the gift card, if any), after all discounts. */
   balanceBeforeCents: number;
   /** Payment row to write, or null (not paid yet / nothing owing). */
   payment: { method: PaymentMethod; amountCents: number } | null;
@@ -99,16 +101,29 @@ export function cashDiscountAvailable(
  * What happens if Amanda taps `choice`. `otherAmountCents` is the "Other
  * amount" option (part payment); without it the whole balance is paid.
  * Throws if the other amount is not between 1 cent and the balance.
+ *
+ * `giftCardCents` (split payment): a gift card covers that much first, at the
+ * card price, and `choice` pays the rest. The cash/PayID discount is on the
+ * price, so it still comes off in full when the rest is paid cash or PayID
+ * (Indulge $154, $100 gift card → $54 card or $49 cash). A gift card on its
+ * own is not cash: no discount. Throws if it's more than is owed.
  */
 export function computeCompletion(
   input: CompletionInput,
   choice: CompleteChoice,
   otherAmountCents?: number,
+  giftCardCents = 0,
 ): CompletionResult {
   // Loyalty is independent of payment method; never applied twice.
   const loyalty = input.loyaltyDiscountCents > 0 ? input.loyaltyDiscountCents : Math.max(0, input.loyaltyRewardDueCents);
 
-  const owingBeforeCash = input.amountCents - input.couponDiscountCents - loyalty - input.amountPaidCents;
+  const owingBeforeGift = input.amountCents - input.couponDiscountCents - loyalty - input.amountPaidCents;
+  if (giftCardCents !== 0) {
+    if (!Number.isInteger(giftCardCents) || giftCardCents < 0 || giftCardCents > Math.max(0, owingBeforeGift)) {
+      throw new Error(`Gift card amount must be between $0.01 and the $${(Math.max(0, owingBeforeGift) / 100).toFixed(2)} owing`);
+    }
+  }
+  const owingBeforeCash = owingBeforeGift - giftCardCents;
 
   // Cash/PayID discount: only when paying cash/PayID, something is still owed,
   // and it hasn't been applied already. Never more than what's owed.
@@ -133,10 +148,47 @@ export function computeCompletion(
   return {
     cashDiscountCents: cash,
     loyaltyDiscountCents: loyalty,
+    giftCardCents,
     balanceBeforeCents: balanceBefore,
     payment,
     balanceAfterCents: balanceBefore - (payment?.amountCents ?? 0),
     overpaidCents: overpaid,
+  };
+}
+
+/**
+ * A payment taken before the appointment without completing it (a deposit or
+ * gift card against an existing booking). No cash or loyalty discount yet —
+ * those are worked out at Complete on the price — but a loyalty reward that
+ * will be due is kept back so the booking can't end up overpaid. The amount
+ * is the "other amount" (needed unless only a gift card is used).
+ */
+export function computeAdvancePayment(
+  input: CompletionInput,
+  choice: CompleteChoice,
+  otherAmountCents: number | undefined,
+  giftCardCents = 0,
+): CompletionResult {
+  const loyaltyDue = input.loyaltyDiscountCents > 0 ? 0 : Math.max(0, input.loyaltyRewardDueCents);
+  const owing = Math.max(0, input.amountCents - input.couponDiscountCents - input.loyaltyDiscountCents - input.cashDiscountCents - loyaltyDue - input.amountPaidCents);
+  if (!Number.isInteger(giftCardCents) || giftCardCents < 0 || giftCardCents > owing) {
+    throw new Error(`Gift card amount must be no more than the $${(owing / 100).toFixed(2)} owing`);
+  }
+  let payment: CompletionResult["payment"] = null;
+  if (choice !== "not_paid" && otherAmountCents !== undefined) {
+    if (!Number.isInteger(otherAmountCents) || otherAmountCents <= 0 || otherAmountCents > owing - giftCardCents) {
+      throw new Error(`Amount must be between $0.01 and the $${((owing - giftCardCents) / 100).toFixed(2)} still owing`);
+    }
+    payment = { method: CHOICE_METHOD[choice], amountCents: otherAmountCents };
+  }
+  return {
+    cashDiscountCents: input.cashDiscountCents,
+    loyaltyDiscountCents: input.loyaltyDiscountCents,
+    giftCardCents,
+    balanceBeforeCents: owing - giftCardCents,
+    payment,
+    balanceAfterCents: owing - giftCardCents - (payment?.amountCents ?? 0),
+    overpaidCents: 0,
   };
 }
 
@@ -172,13 +224,90 @@ export function onlineBookingPaymentRows(p: {
   return rows;
 }
 
-export type AdminBookingMode = "pay_on_day" | "payment_link" | "no_charge";
+/**
+ * pay_on_day    confirmed, nothing paid yet
+ * deposit_paid  confirmed, a deposit already taken in studio (card / cash or PayID / gift card)
+ * gift_card     confirmed, a gift card covers some or all of it now
+ * payment_link  pending_payment until the client pays the link
+ * no_charge     confirmed at $0
+ */
+export type AdminBookingMode = "pay_on_day" | "deposit_paid" | "gift_card" | "payment_link" | "no_charge";
+
+export const ADMIN_BOOKING_MODES: AdminBookingMode[] = ["pay_on_day", "deposit_paid", "gift_card", "payment_link", "no_charge"];
+
+/** How a studio deposit was taken. Cash and PayID are one option (Amanda's wording) recorded as cash. */
+export type DepositMethod = "card" | "cash" | "gift_card";
+
+export const DEPOSIT_METHOD_PAYMENT: Record<DepositMethod, PaymentMethod> = {
+  card: "card_square",
+  cash: "cash",
+  gift_card: "gift_card",
+};
+
+/** Default deposit for the admin form: the service's deposit ($100 lessons, else $50), never more than the price. */
+export function defaultDepositCents(service: { deposit_cents?: number }, priceCents: number): number {
+  return Math.min(service.deposit_cents ?? 5000, priceCents);
+}
+
+/**
+ * The payment to record when an admin booking is made, or null (nothing paid
+ * yet). Throws a message for Amanda if the amount is wrong. Amounts are whole
+ * dollars, more than $0, and never more than the price less a loyalty reward
+ * that will be due at Complete (so the booking can't end up overpaid). A gift
+ * card can't be used for more than its balance.
+ */
+export function adminBookingPayment(p: {
+  mode: AdminBookingMode;
+  priceCents: number;
+  loyaltyRewardDueCents: number;
+  amountCents?: number;
+  depositMethod?: DepositMethod;
+  giftCardRemainingCents?: number;
+}): { method: PaymentMethod; amountCents: number } | null {
+  if (p.mode !== "deposit_paid" && p.mode !== "gift_card") return null;
+
+  const method: PaymentMethod | undefined = p.mode === "gift_card" ? "gift_card" : DEPOSIT_METHOD_PAYMENT[p.depositMethod ?? "card"];
+  if (!method) throw new Error("Choose how the deposit was paid");
+
+  const max = Math.max(0, p.priceCents - Math.max(0, p.loyaltyRewardDueCents));
+  const amount = p.amountCents;
+  if (typeof amount !== "number" || !Number.isInteger(amount) || amount <= 0 || amount % 100 !== 0) {
+    throw new Error("Enter the amount paid in whole dollars, more than $0");
+  }
+  if (amount > max) {
+    throw new Error(`The amount paid can't be more than $${(max / 100).toFixed(0)}${p.loyaltyRewardDueCents > 0 ? " (the price less the loyalty reward due)" : ""}`);
+  }
+  if (method === "gift_card") {
+    const remaining = p.giftCardRemainingCents ?? 0;
+    if (amount > remaining) {
+      throw new Error(`The gift card only has ${dollars(remaining)} left`);
+    }
+  }
+  return { method, amountCents: amount };
+}
+
+function dollars(c: number) {
+  const d = c / 100;
+  return d % 1 === 0 ? `$${d.toFixed(0)}` : `$${d.toFixed(2)}`;
+}
+
+/**
+ * "$50 paid, $104 balance owing" — the one wording for a part-paid booking,
+ * used wherever a balance shows (appointment list, phone sheet, Complete panel).
+ */
+export function paidBalanceText(paidCents: number, owingCents: number): string {
+  if (owingCents <= 0) return paidCents > 0 ? `${dollars(paidCents)} paid` : "Nothing owing";
+  if (paidCents <= 0) return `${dollars(owingCents)} balance owing`;
+  return `${dollars(paidCents)} paid, ${dollars(owingCents)} balance owing`;
+}
 
 /**
  * Amounts for a booking Amanda makes in admin. Only "no charge" (or an
  * admin-only service like Treatment Plan Facial) is $0; every other booking
  * takes the service's card price. A payment-link booking gets a due loyalty
  * reward applied up front so the link never charges more than is owed.
+ * Deposit-paid and gift-card bookings are confirmed like pay-on-the-day; the
+ * loyalty reward is applied at Complete.
  */
 export function adminBookingAmounts(p: {
   mode: AdminBookingMode;

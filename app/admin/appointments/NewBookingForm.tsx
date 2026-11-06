@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { SERVICES, CATEGORY_META } from "@/lib/services-data";
 import { formatPrice } from "@/lib/utils";
 import { allowsExtraDaughters, bookingPriceCents, EXTRA_DAUGHTER_PRICE_CENTS, MAX_EXTRA_DAUGHTERS } from "@/lib/makeup-lessons";
+import { defaultDepositCents, paidBalanceText, type AdminBookingMode, type DepositMethod } from "@/lib/complete-payment";
+import { GiftCardPicker, type PickedGiftCard } from "@/components/GiftCardPicker";
 
 interface ClientSuggestion {
   id: string;
@@ -50,11 +52,23 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   const [mobile, setMobile]         = useState("");
   const [extraDaughters, setExtraDaughters] = useState(0);
   // pay_on_day: Amanda takes payment at the appointment (the everyday case).
-  const [mode, setMode]             = useState<"pay_on_day" | "payment_link" | "no_charge">("pay_on_day");
+  const [mode, setMode]             = useState<AdminBookingMode>("pay_on_day");
+  // Deposit paid / Gift card: amount in whole dollars (string while typing).
+  const [paidAmount, setPaidAmount] = useState("");
+  const [paidAmountTouched, setPaidAmountTouched] = useState(false);
+  const [depositMethod, setDepositMethod] = useState<DepositMethod>("card");
+  const [giftCard, setGiftCard]     = useState<PickedGiftCard | null>(null);
   const [loyaltyRewardCents, setLoyaltyRewardCents] = useState(0);
   const [saving, setSaving]         = useState(false);
   const [error, setError]           = useState<string | null>(null);
-  const [success, setSuccess]       = useState<{ name: string; paymentUrl?: string; mode: "pay_on_day" | "payment_link" | "no_charge" } | null>(null);
+  const [success, setSuccess]       = useState<{
+    name: string;
+    paymentUrl?: string;
+    mode: AdminBookingMode;
+    amountPaidCents?: number;
+    priceCents?: number;
+    paymentError?: string | null;
+  } | null>(null);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [conflictChecking, setConflictChecking] = useState(false);
 
@@ -127,6 +141,22 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
   // Auto-enable no-charge for admin-only (zero-price) services
   const isAdminOnlyService = selectedService?.admin_only === true;
 
+  // ── Deposit paid / Gift card amount ─────────────────────────────────────
+  const usesGiftCard = mode === "gift_card" || (mode === "deposit_paid" && depositMethod === "gift_card");
+  const maxPaidCents = Math.max(0, selectedPriceCents - loyaltyRewardCents);
+  const suggestedPaidCents = mode === "gift_card"
+    ? Math.min(giftCard?.remaining_value_cents ?? 0, maxPaidCents)
+    : Math.min(selectedService ? defaultDepositCents(selectedService, selectedPriceCents) : 0, maxPaidCents,
+        usesGiftCard && giftCard ? giftCard.remaining_value_cents : Infinity);
+  // Follow the default (service deposit, or the gift card's balance) until Amanda edits it.
+  useEffect(() => {
+    if (!paidAmountTouched) setPaidAmount(suggestedPaidCents > 0 ? String(Math.floor(suggestedPaidCents / 100)) : "");
+  }, [suggestedPaidCents, paidAmountTouched]);
+  const paidCents = Math.round(Number(paidAmount) * 100);
+  const giftCardLookup = email.includes("@") || (firstName.trim() && lastName.trim())
+    ? new URLSearchParams({ email, firstName, lastName }).toString()
+    : null;
+
   // ── Conflict check ──────────────────────────────────────────────────────
   // Fires 400 ms after date/time/service changes to avoid hammering the API.
   useEffect(() => {
@@ -194,20 +224,60 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
     setSaving(true);
 
     try {
-      const effectiveMode = isAdminOnlyService ? "no_charge" : mode;
+      const effectiveMode: AdminBookingMode = isAdminOnlyService ? "no_charge" : mode;
+      const takesPayment = effectiveMode === "deposit_paid" || effectiveMode === "gift_card";
+      if (takesPayment) {
+        if (!Number.isInteger(Number(paidAmount)) || paidCents <= 0) {
+          setError("Enter the amount paid in whole dollars, more than $0");
+          return;
+        }
+        if (paidCents > maxPaidCents) {
+          setError(`The amount paid can't be more than ${formatPrice(maxPaidCents)}`);
+          return;
+        }
+        if (usesGiftCard && !giftCard) {
+          setError("Choose a gift card or check its code");
+          return;
+        }
+        if (usesGiftCard && giftCard && paidCents > giftCard.remaining_value_cents) {
+          setError(`${giftCard.code} only has ${formatPrice(giftCard.remaining_value_cents)} left`);
+          return;
+        }
+      }
       const res = await fetch("/api/admin/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceId, date, time, firstName, lastName, email, mobile, mode: effectiveMode, extraDaughters: showExtras ? extraDaughters : 0 }),
+        body: JSON.stringify({
+          serviceId, date, time, firstName, lastName, email, mobile,
+          mode: effectiveMode,
+          extraDaughters: showExtras ? extraDaughters : 0,
+          ...(takesPayment
+            ? {
+                paidAmountCents: paidCents,
+                depositMethod: effectiveMode === "deposit_paid" ? depositMethod : undefined,
+                giftCardCode: usesGiftCard ? giftCard?.code : undefined,
+              }
+            : {}),
+        }),
       });
-      const data = await res.json() as { error?: string; paymentUrl?: string; service?: string };
+      const data = await res.json() as {
+        error?: string; paymentUrl?: string; service?: string;
+        amountPaidCents?: number; priceCents?: number; paymentError?: string | null;
+      };
 
       if (!res.ok) {
         setError(data.error ?? "Failed to create booking");
         return;
       }
 
-      setSuccess({ name: `${firstName} ${lastName}`, paymentUrl: data.paymentUrl, mode: effectiveMode });
+      setSuccess({
+        name: `${firstName} ${lastName}`,
+        paymentUrl: data.paymentUrl,
+        mode: effectiveMode,
+        amountPaidCents: data.amountPaidCents,
+        priceCents: data.priceCents,
+        paymentError: data.paymentError,
+      });
       onCreated();
     } catch {
       setError("An unexpected error occurred");
@@ -227,8 +297,17 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
               <p className="text-sm text-emerald-700">
                 Booking confirmed. A confirmation email and SMS have been sent.
                 {success.mode === "pay_on_day" && " Take payment at the appointment with Complete."}
+                {(success.mode === "deposit_paid" || success.mode === "gift_card") && !success.paymentError &&
+                  ` ${paidBalanceText(success.amountPaidCents ?? 0, (success.priceCents ?? 0) - (success.amountPaidCents ?? 0))}.`}
               </p>
-            ) : (
+            ) : null}
+            {success.paymentError && (
+              <p className="mt-2 text-sm text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
+                <strong>The payment wasn&rsquo;t recorded:</strong> {success.paymentError}. The booking is saved with nothing paid —
+                open it, tap Complete and use &ldquo;Record now, don&rsquo;t complete&rdquo; to add it.
+              </p>
+            )}
+            {success.mode === "payment_link" && (
               <>
                 <p className="text-sm text-emerald-700 mb-3">
                   A payment request has been sent via email and SMS. The link expires in 48 hours.
@@ -255,7 +334,10 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
         </div>
         <div className="flex gap-2 mt-4">
           <button
-            onClick={() => { setSuccess(null); setFirstName(""); setLastName(""); setEmail(""); setMobile(""); setMode("pay_on_day"); }}
+            onClick={() => {
+              setSuccess(null); setFirstName(""); setLastName(""); setEmail(""); setMobile(""); setMode("pay_on_day");
+              setGiftCard(null); setPaidAmountTouched(false); setDepositMethod("card");
+            }}
             className="text-sm px-4 py-2 rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-100 transition-colors"
           >
             Create another
@@ -493,13 +575,15 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
           <div className="flex flex-wrap gap-2">
             {([
               ["pay_on_day", `Pay on the day${selectedService ? ` (${formatPrice(selectedPriceCents)})` : ""}`],
+              ["deposit_paid", "Deposit paid"],
+              ["gift_card", "Gift card"],
               ["payment_link", "Send payment link"],
               ["no_charge", "No charge / internal"],
             ] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
-                onClick={() => setMode(value)}
+                onClick={() => { setMode(value); setPaidAmountTouched(false); }}
                 aria-pressed={mode === value}
                 className={`px-3 py-2 rounded-lg border text-sm transition-colors ${
                   mode === value
@@ -514,6 +598,74 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
             ))}
           </div>
         </fieldset>
+      )}
+
+      {/* Deposit paid / Gift card — what's been paid now */}
+      {!isAdminOnlyService && (mode === "deposit_paid" || mode === "gift_card") && (
+        <div className="mt-3 border border-[#e8e0d8] rounded-lg p-4 space-y-3 max-w-lg">
+          {mode === "deposit_paid" && (
+            <div>
+              <p className="text-xs font-medium text-[#7a6f68] mb-1.5">Paid by</p>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ["card", "Card in studio"],
+                  ["cash", "Cash or PayID"],
+                  ["gift_card", "Gift card"],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => { setDepositMethod(value); setPaidAmountTouched(false); }}
+                    aria-pressed={depositMethod === value}
+                    className={`px-3 py-1.5 rounded-lg border text-sm transition-colors ${
+                      depositMethod === value
+                        ? "border-[#044e77] bg-[#044e77]/5 text-[#044e77] font-medium"
+                        : "border-[#ddd8d2] text-[#5a504a] hover:border-[#c0b4ab]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {usesGiftCard && (
+            <GiftCardPicker
+              lookup={giftCardLookup}
+              picked={giftCard}
+              onPick={(c) => { setGiftCard(c); setPaidAmountTouched(false); }}
+            />
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-[#7a6f68] mb-1.5">
+              {mode === "gift_card" ? "Amount from the gift card" : "Deposit amount"}
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-[#7a6f68]">$</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                step="1"
+                value={paidAmount}
+                onChange={(e) => { setPaidAmount(e.target.value); setPaidAmountTouched(true); }}
+                className="w-28 h-10 border border-[#ddd8d2] rounded-lg px-3 text-sm focus:outline-none focus:border-[#044e77]"
+              />
+              {selectedService && paidCents > 0 && paidCents <= selectedPriceCents && (
+                <span className="text-sm text-[#5a504a]">
+                  {paidBalanceText(paidCents, selectedPriceCents - paidCents)}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[#9a8f87] mt-1">
+              Whole dollars, up to {formatPrice(maxPaidCents)}
+              {usesGiftCard && giftCard ? ` (card has ${formatPrice(giftCard.remaining_value_cents)})` : ""}.
+              Recorded as paid now; the booking is confirmed and the client gets the usual confirmation.
+            </p>
+          </div>
+        </div>
       )}
 
       {loyaltyRewardCents > 0 && !isAdminOnlyService && mode !== "no_charge" && (
@@ -558,6 +710,8 @@ export function NewBookingForm({ onClose, onCreated, initialDate }: Props) {
             ? "Create booking (no charge)"
             : mode === "payment_link"
             ? "Create booking & send payment link"
+            : mode === "deposit_paid" || mode === "gift_card"
+            ? `Create booking — ${formatPrice(Math.max(0, paidCents))} paid`
             : "Create booking"}
         </button>
         <button

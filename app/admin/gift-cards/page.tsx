@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 interface GiftCard {
   id: string;
@@ -16,6 +16,19 @@ interface GiftCard {
   source: "admin" | "customer";
   is_active: boolean;
   created_at: string;
+  gift_card_redemptions?: Redemption[];
+}
+
+interface Redemption {
+  id: string;
+  amount_cents: number;
+  redeemed_at: string;
+  appointment_id: string;
+  appointments: {
+    start_datetime: string;
+    services: { name: string } | null;
+    clients: { first_name: string; last_name: string } | null;
+  } | null;
 }
 
 function formatPrice(cents: number) {
@@ -46,6 +59,7 @@ export default function GiftCardsPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [lastCreated, setLastCreated] = useState<GiftCard | null>(null);
+  const [openHistory, setOpenHistory] = useState<string | null>(null);
 
   const fetchCards = useCallback(async () => {
     setLoading(true);
@@ -257,8 +271,11 @@ export default function GiftCardsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#f0ebe4]">
-              {cards.map((card) => (
-                <tr key={card.id} className={`hover:bg-[#faf8f6] ${!card.is_active ? "opacity-50" : ""}`}>
+              {cards.map((card) => {
+                const redemptions = [...(card.gift_card_redemptions ?? [])].sort((a, b) => a.redeemed_at.localeCompare(b.redeemed_at));
+                return (
+                <React.Fragment key={card.id}>
+                <tr className={`hover:bg-[#faf8f6] ${!card.is_active ? "opacity-50" : ""}`}>
                   <td className="px-4 py-3 font-mono text-xs tracking-wider text-[#1a1a1a]">
                     {card.code}
                   </td>
@@ -296,7 +313,13 @@ export default function GiftCardsPage() {
                       {!card.is_active ? "Deactivated" : card.remaining_value_cents === 0 ? "Used" : "Active"}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => setOpenHistory(openHistory === card.id ? null : card.id)}
+                      className="text-xs text-[#7a6f68] hover:text-[#044e77] transition-colors mr-3"
+                    >
+                      {redemptions.length > 0 ? `Used ${redemptions.length}×` : "Not used"}
+                    </button>
                     <button
                       onClick={() => toggleActive(card)}
                       className="text-xs text-[#7a6f68] hover:text-[#044e77] transition-colors"
@@ -305,7 +328,51 @@ export default function GiftCardsPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                {openHistory === card.id && (
+                  <tr className="bg-[#faf8f6]">
+                    <td colSpan={8} className="px-4 py-3">
+                      {card.purchaser_name && (
+                        <p className="text-xs text-[#7a6f68] mb-2">
+                          Bought by {card.purchaser_name}{card.purchaser_email ? ` (${card.purchaser_email})` : ""}
+                          {card.recipient_name ? ` for ${card.recipient_name}` : ""}
+                        </p>
+                      )}
+                      {redemptions.length === 0 ? (
+                        <p className="text-xs text-[#9a8f87]">
+                          No redemptions recorded.
+                          {!card.is_active && card.remaining_value_cents > 0 &&
+                            " Deactivated with its full balance — if it was used in studio before admin redemptions existed, the history isn't here."}
+                        </p>
+                      ) : (
+                        <table className="text-xs">
+                          <tbody>
+                            {redemptions.map((r) => (
+                              <tr key={r.id}>
+                                <td className="pr-4 py-0.5 text-[#9a8f87]">{formatDate(r.redeemed_at)}</td>
+                                <td className="pr-4 py-0.5 font-medium text-[#1a1a1a]">{formatPrice(r.amount_cents)}</td>
+                                <td className="pr-4 py-0.5 text-[#5a504a]">
+                                  {r.appointments?.clients ? `${r.appointments.clients.first_name} ${r.appointments.clients.last_name}` : "—"}
+                                </td>
+                                <td className="pr-4 py-0.5 text-[#5a504a]">
+                                  {r.appointments?.services?.name ?? "—"}
+                                  {r.appointments ? ` · ${formatDate(r.appointments.start_datetime)}` : ""}
+                                </td>
+                              </tr>
+                            ))}
+                            <tr>
+                              <td className="pr-4 pt-1 text-[#9a8f87]">Left</td>
+                              <td className="pr-4 pt-1 font-medium text-[#1a1a1a]">{formatPrice(card.remaining_value_cents)}</td>
+                              <td colSpan={2} />
+                            </tr>
+                          </tbody>
+                        </table>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getLoyaltyRewardForAppointment } from "@/lib/loyalty";
 import { onAppointmentCompleted } from "@/lib/appointment-completion";
+import { recordAppointmentPayments } from "@/lib/appointment-payments";
 import {
   cashDiscountAvailable,
+  computeAdvancePayment,
   computeCompletion,
   type CompleteChoice,
   type CompletionInput,
@@ -107,8 +109,14 @@ export async function GET(
 }
 
 // POST — Amanda tapped a button. Recomputes server-side and writes it in one
-// transaction (record_appointment_payment). Never charges a card — "Paid card"
+// transaction (record_appointment_payments). Never charges a card — "Paid card"
 // records a payment already taken on the studio Square terminal.
+//
+// giftCardCode + giftCardCents: a gift card pays that much first (split
+// payment); `choice` pays the rest, same optimistic lock.
+// complete: false — record a payment before the appointment (deposit, gift
+// card) without completing it: no discounts applied (they belong to the
+// day), a pending_payment booking becomes confirmed.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -119,6 +127,9 @@ export async function POST(
     otherAmountCents?: number;
     expectedPaidCents?: number;
     notes?: string;
+    giftCardCode?: string;
+    giftCardCents?: number;
+    complete?: boolean;
   };
 
   if (!body.choice || !CHOICES.includes(body.choice)) {
@@ -127,6 +138,11 @@ export async function POST(
   if (typeof body.expectedPaidCents !== "number") {
     return NextResponse.json({ error: "expectedPaidCents is required" }, { status: 400 });
   }
+  const giftCardCents = body.giftCardCents ?? 0;
+  if (giftCardCents !== 0 && !body.giftCardCode?.trim()) {
+    return NextResponse.json({ error: "Enter or choose a gift card" }, { status: 400 });
+  }
+  const complete = body.complete !== false;
 
   const db = supabase();
   const loaded = await load(db, id);
@@ -140,29 +156,35 @@ export async function POST(
 
   let result: CompletionResult;
   try {
-    result = computeCompletion(loaded.input, body.choice, body.otherAmountCents);
+    result = complete
+      ? computeCompletion(loaded.input, body.choice, body.otherAmountCents, giftCardCents)
+      : computeAdvancePayment(loaded.input, body.choice, body.otherAmountCents, giftCardCents);
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Invalid amount" }, { status: 400 });
   }
-
-  const { error } = await db.rpc("record_appointment_payment", {
-    p_appointment_id: id,
-    p_expected_paid_cents: body.expectedPaidCents,
-    p_cash_discount_cents: result.cashDiscountCents,
-    p_loyalty_discount_cents: result.loyaltyDiscountCents,
-    p_method: result.payment?.method ?? "cash",
-    p_amount_cents: result.payment?.amountCents ?? 0,
-    p_recorded_by: "admin",
-    p_notes: body.notes?.trim() || null,
-  });
-  if (error) {
-    const stale = error.code === "40001";
-    return NextResponse.json({ error: error.message }, { status: stale ? 409 : 500 });
+  if (!complete && !result.payment && result.giftCardCents === 0) {
+    return NextResponse.json({ error: "Nothing to record" }, { status: 400 });
   }
 
-  if (loaded.status !== "completed") {
+  const r = await recordAppointmentPayments(db, {
+    appointmentId: id,
+    expectedPaidCents: body.expectedPaidCents,
+    complete,
+    cashDiscountCents: complete ? result.cashDiscountCents : null,
+    loyaltyDiscountCents: complete ? result.loyaltyDiscountCents : null,
+    giftCard: result.giftCardCents > 0 ? { code: body.giftCardCode!, amountCents: result.giftCardCents } : null,
+    method: result.payment?.method ?? null,
+    amountCents: result.payment?.amountCents ?? 0,
+    recordedBy: "admin",
+    notes: body.notes ?? (complete ? null : "Deposit taken in studio"),
+  });
+  if (!r.ok) {
+    return NextResponse.json({ error: r.error }, { status: r.status });
+  }
+
+  if (complete && loaded.status !== "completed") {
     await onAppointmentCompleted(db, id);
   }
 
-  return NextResponse.json({ success: true, ...result });
+  return NextResponse.json({ success: true, ...result, status: r.status, amountPaidCents: r.amountPaidCents, giftCard: r.giftCard });
 }

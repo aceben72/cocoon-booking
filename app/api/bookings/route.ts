@@ -10,6 +10,7 @@ import { hasBookingConflict, bookingLengthMinutes, withinOpeningHours } from "@/
 import { openingHoursFor } from "@/lib/availability";
 import { computeBookingPricing } from "@/lib/booking-pricing";
 import { onlineBookingPaymentRows } from "@/lib/complete-payment";
+import { recordAppointmentPayments } from "@/lib/appointment-payments";
 import { getLoyaltyStatusByEmail, isLoyaltyServiceSlug, LOYALTY_REWARD_CENTS } from "@/lib/loyalty";
 import {
   bookingPriceCents,
@@ -182,6 +183,7 @@ export async function POST(request: NextRequest) {
   }
 
   let giftCardId: string | null = null;
+  let giftCardStoredCode: string | null = null;
   let giftCardBalanceCents = 0;
 
   if (!facialPackagePaidInFull && giftCardCode) {
@@ -190,6 +192,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Gift card: ${gcResult.error}` }, { status: 400 });
     }
     giftCardId = gcResult.giftCard.id;
+    giftCardStoredCode = gcResult.giftCard.code;
     giftCardBalanceCents = gcResult.giftCard.remaining_value_cents;
   }
 
@@ -294,7 +297,12 @@ export async function POST(request: NextRequest) {
     priceCents,
     squarePaymentId,
   });
-  const storedAmountPaidCents = paymentRows.reduce((sum, r) => sum + r.amountCents, 0);
+  // The gift card part is recorded by recordAppointmentPayments() below (it
+  // also decrements the card under a row lock), so it's not inserted here and
+  // not in the starting amount_paid_cents — the RPC refuses to redeem more
+  // than is still owing.
+  const directPaymentRows = paymentRows.filter((r) => r.method !== "gift_card");
+  const initialAmountPaidCents = directPaymentRows.reduce((sum, r) => sum + r.amountCents, 0);
 
   // ── Upsert client ─────────────────────────────────────────────────────
   // Use ILIKE for case-insensitive email matching so that e.g. Jane@gmail.com
@@ -357,7 +365,7 @@ export async function POST(request: NextRequest) {
       square_payment_id: squarePaymentId,
       amount_cents: priceCents,
       extra_daughters: extraDaughters,
-      amount_paid_cents: storedAmountPaidCents,
+      amount_paid_cents: initialAmountPaidCents,
       discount_cents: totalDiscountCents,
       loyalty_discount_cents: loyaltyDiscountCents,
       coupon_id: couponId,
@@ -375,9 +383,9 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Record payments ───────────────────────────────────────────────────
-  if (paymentRows.length > 0) {
+  if (directPaymentRows.length > 0) {
     const { error: payErr } = await supabase.from("appointment_payments").insert(
-      paymentRows.map((r) => ({
+      directPaymentRows.map((r) => ({
         appointment_id: appointment.id,
         amount_cents: r.amountCents,
         method: r.method,
@@ -428,25 +436,20 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Record gift card redemption ───────────────────────────────────────
-  if (giftCardId && giftCardAppliedCents > 0) {
-    await supabase.from("gift_card_redemptions").insert({
-      gift_card_id: giftCardId,
-      appointment_id: appointment.id,
-      amount_cents: giftCardAppliedCents,
+  // Shared with admin (lib/appointment-payments.ts): one transaction that
+  // locks the card, decrements it, writes the redemption and the gift_card
+  // payment row. The card was checked before charging; if it was used
+  // elsewhere in between, the booking and charge stand and this is flagged.
+  if (giftCardId && giftCardAppliedCents > 0 && giftCardStoredCode) {
+    const r = await recordAppointmentPayments(supabase, {
+      appointmentId: appointment.id,
+      expectedPaidCents: null,
+      complete: false,
+      giftCard: { code: giftCardStoredCode, amountCents: giftCardAppliedCents },
+      recordedBy: "online",
     });
-
-    // Decrement remaining balance
-    const { data: gcRow } = await supabase
-      .from("gift_cards")
-      .select("remaining_value_cents")
-      .eq("id", giftCardId)
-      .single();
-    if (gcRow) {
-      const newBalance = Math.max(0, gcRow.remaining_value_cents - giftCardAppliedCents);
-      await supabase
-        .from("gift_cards")
-        .update({ remaining_value_cents: newBalance })
-        .eq("id", giftCardId);
+    if (!r.ok) {
+      console.error("[bookings] GIFT CARD NOT REDEEMED — booking and charge stand, redeem by hand:", appointment.id, giftCardStoredCode, giftCardAppliedCents, r.error);
     }
   }
 

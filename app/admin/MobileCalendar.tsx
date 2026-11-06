@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { NewBookingForm } from "./appointments/NewBookingForm";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
 import { CompletePaymentPanel } from "@/components/CompletePaymentPanel";
+import { appointmentBalanceCents, paidBalanceText } from "@/lib/complete-payment";
 import { ClientContactEditor } from "@/components/ClientContactEditor";
 import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
 import { bookingLengthMinutes } from "@/lib/slot-rules";
@@ -23,6 +24,12 @@ interface CalendarAppointment {
   loyalty?: AppointmentLoyalty | null;
   extra_daughters?: number;
   appointment_attendees?: LessonAttendee[];
+  amount_cents?: number;
+  amount_paid_cents?: number;
+  discount_cents?: number;
+  loyalty_discount_cents?: number;
+  cash_discount_cents?: number;
+  facial_package_redemptions?: { id: string }[];
 }
 
 interface CalendarBlockedPeriod {
@@ -1088,6 +1095,25 @@ export default function MobileCalendar() {
                 <div className="flex justify-between">
                   <span className="text-[#9a8f87]">Duration</span>
                   <span className="text-[#1a1a1a]">{selectedAppt.services.duration_minutes} min</span>
+                </div>
+              )}
+              {typeof selectedAppt.amount_cents === "number" && selectedAppt.amount_cents > 0 && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-[#9a8f87] shrink-0">Payment</span>
+                  <span className="text-[#1a1a1a] text-right">
+                    {selectedAppt.facial_package_redemptions?.length
+                      ? "Facial package"
+                      : paidBalanceText(
+                          selectedAppt.amount_paid_cents ?? 0,
+                          appointmentBalanceCents({
+                            amount_cents: selectedAppt.amount_cents,
+                            discount_cents: selectedAppt.discount_cents ?? 0,
+                            loyalty_discount_cents: selectedAppt.loyalty_discount_cents ?? 0,
+                            cash_discount_cents: selectedAppt.cash_discount_cents ?? 0,
+                            amount_paid_cents: selectedAppt.amount_paid_cents ?? 0,
+                          }),
+                        )}
+                  </span>
                 </div>
               )}
               <LessonDetails

@@ -743,7 +743,7 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
         >
           booking policy
         </a>
-        . Please provide 48 hours notice to cancel or reschedule.
+        .
       </p>
     </div>
   );

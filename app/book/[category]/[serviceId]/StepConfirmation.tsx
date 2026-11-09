@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { formatPrice, formatDuration } from "@/lib/utils";
 import Image from "next/image";
+import BookingPolicyNotice from "@/components/BookingPolicyNotice";
 
 interface BookingResult {
   appointmentId: string;
@@ -121,20 +122,20 @@ export default function StepConfirmation({ result }: Props) {
         </div>
       )}
 
-      {/* Cancellation / balance note */}
-      <div className="bg-[#f0ebe4] rounded-xl px-5 py-4 text-sm text-[#7a6f68] font-light text-left mb-8 space-y-2">
-        {hasOutstanding && (
+      {/* Balance note */}
+      {hasOutstanding && (
+        <div className="bg-[#f0ebe4] rounded-xl px-5 py-4 text-sm text-[#7a6f68] font-light text-left mb-4">
           <p>
             <strong className="text-[#5a504a] font-medium">Balance reminder:</strong>{" "}
             The remaining {formatPrice(balanceCents)} is payable at your appointment.
           </p>
-        )}
-        <p>
-          <strong className="text-[#5a504a] font-medium">Cancellation policy:</strong>{" "}
-          Please provide at least 48 hours notice if you need to cancel or reschedule.
-          Contact Amanda directly to make any changes.
-        </p>
-      </div>
+        </div>
+      )}
+
+      {/* Booking policy (same wording as shown before payment) */}
+      <BookingPolicyNotice className="mb-8">
+        <p>Contact Amanda directly to make any changes.</p>
+      </BookingPolicyNotice>
 
       {/* Actions */}
       <Link

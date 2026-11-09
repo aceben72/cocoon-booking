@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { hasDepositOption as serviceHasDepositOption } from "@/lib/utils";
 import type { Service } from "@/types";
+import BookingPolicyNotice from "@/components/BookingPolicyNotice";
 
 
 const SQUARE_APP_ID       = process.env.NEXT_PUBLIC_SQUARE_APP_ID ?? "";
@@ -283,6 +284,8 @@ export function PaymentPage({
           {error}
         </div>
       )}
+
+      <BookingPolicyNotice className="mb-5" />
 
       <button
         onClick={handlePay}

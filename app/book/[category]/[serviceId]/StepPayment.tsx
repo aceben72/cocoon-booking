@@ -6,6 +6,7 @@ import { formatPrice, formatDuration, formatTime, bookingCashSavingText, booking
 import { bookingPriceCents, bookingCashPriceCents, normaliseExtraDaughters } from "@/lib/makeup-lessons";
 import { computeBookingPricing } from "@/lib/booking-pricing";
 import { isLoyaltyServiceSlug } from "@/lib/loyalty-rules";
+import BookingPolicyNotice from "@/components/BookingPolicyNotice";
 
 interface BookingResult {
   appointmentId: string;
@@ -707,6 +708,8 @@ export default function StepPayment({ service, date, time, client, onSuccess, on
             : "Your promotions cover the full amount — no payment required today."}
         </div>
       )}
+
+      <BookingPolicyNotice className="mb-5" />
 
       <button
         onClick={handleSubmit}

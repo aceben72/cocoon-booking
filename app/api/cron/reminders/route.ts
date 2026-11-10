@@ -3,6 +3,14 @@ import { createClient } from "@supabase/supabase-js";
 import { sendAppointmentReminder, sendClassReminder } from "@/lib/notifications";
 import { isMakeupLesson } from "@/lib/makeup-lessons";
 
+// Only these service categories get the Resend follow-up. Other services get
+// their follow-up from a Mailchimp journey, triggered by the completion tags in
+// lib/appointment-completion.ts.
+const RESEND_FOLLOWUP_CATEGORIES = ["brow-treatments", "led-light-treatments", "make-up"];
+
+// How far back the follow-up query reaches, so a late Complete still gets one.
+const FOLLOWUP_CATCHUP_DAYS = 5;
+
 function supabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -136,10 +144,19 @@ export async function GET(request: NextRequest) {
   console.log(`[cron/reminders] done — ${sent} reminder(s) sent, ${errors} error(s)`);
 
   // ── Follow-up emails (completed appointments, ~24h after end_datetime) ────
-  const followupWindowStart = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString();
+  // Resend follow-up + review request for brow, LED and Professional Make-Up
+  // Application only. Normally sent ~24h after the appointment ends; the
+  // window reaches back FOLLOWUP_CATCHUP_DAYS so an appointment marked
+  // Complete late still gets one. followup_sent_at (set after each send) plus
+  // the status/null filters below stop duplicates.
+  const followupWindowStart = new Date(now.getTime() - FOLLOWUP_CATCHUP_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const followupWindowEnd   = new Date(now.getTime() - 23 * 60 * 60 * 1000).toISOString();
+  const followupOnTimeStart = now.getTime() - 25 * 60 * 60 * 1000;
 
-  console.log(`[cron/reminders] follow-up window: ${followupWindowStart} → ${followupWindowEnd}`);
+  console.log(
+    `[cron/reminders] follow-up window: ${followupWindowStart} → ${followupWindowEnd}` +
+    ` (${FOLLOWUP_CATCHUP_DAYS}-day catch-up; categories: ${RESEND_FOLLOWUP_CATEGORIES.join(", ")})`,
+  );
 
   let followupSent   = 0;
   let followupErrors = 0;
@@ -147,8 +164,8 @@ export async function GET(request: NextRequest) {
   const { data: completedAppts, error: completedErr } = await supabase()
     .from("appointments")
     .select(`
-      id,
-      services ( name ),
+      id, end_datetime,
+      services ( name, category ),
       clients  ( first_name, email )
     `)
     .eq("status", "completed")
@@ -163,13 +180,23 @@ export async function GET(request: NextRequest) {
 
     for (const appt of completedAppts ?? []) {
       const client  = appt.clients  as unknown as { first_name: string; email: string } | null;
-      const service = appt.services as unknown as { name: string } | null;
+      const service = appt.services as unknown as { name: string; category: string | null } | null;
 
-      // Make-up lessons get the Mailchimp post-makeup-class journey instead.
-      if (!service || isMakeupLesson(service.name)) {
+      if (!service || !service.category || !RESEND_FOLLOWUP_CATEGORIES.includes(service.category)) {
+        console.log(
+          `[cron/reminders] follow-up ${appt.id} — skipped (category ${service?.category ?? "unknown"} gets Mailchimp journey)`,
+        );
+        continue;
+      }
+
+      // Private / Me & a Friend lessons share the "make-up" category but get
+      // the Mailchimp post-makeup-class journey instead.
+      if (isMakeupLesson(service.name)) {
         console.log(`[cron/reminders] follow-up ${appt.id} — skipped (make-up class)`);
         continue;
       }
+
+      const isLate = new Date(appt.end_datetime).getTime() < followupOnTimeStart;
 
       if (!client?.email) {
         console.log(`[cron/reminders] follow-up ${appt.id} — no client email, marking sent to prevent retry`);
@@ -208,7 +235,10 @@ export async function GET(request: NextRequest) {
             .from("appointments")
             .update({ followup_sent_at: now.toISOString() })
             .eq("id", appt.id);
-          console.log(`[cron/reminders] follow-up ${appt.id} — sent (Resend id: ${result.id})`);
+          console.log(
+            `[cron/reminders] follow-up ${appt.id} — sent (Resend id: ${result.id})` +
+            (isLate ? " — late (completed after window)" : ""),
+          );
           followupSent++;
         } else {
           console.error(`[cron/reminders] follow-up ${appt.id} — Resend error:`, JSON.stringify(result));

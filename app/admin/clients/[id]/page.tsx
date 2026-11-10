@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getAppointmentLoyaltyMap, getLoyaltyStatus, LOYALTY_FACIALS_REQUIRED, type AppointmentLoyalty, type LoyaltyStatus } from "@/lib/loyalty";
 import { LoyaltyBadge } from "@/components/LoyaltyBadge";
 import { LoyaltyToggle } from "./LoyaltyToggle";
+import { LeftReviewToggle } from "@/components/LeftReviewToggle";
 import { ClientContactEditor } from "@/components/ClientContactEditor";
 
 export const dynamic = "force-dynamic";
@@ -126,7 +127,7 @@ export default async function ClientDetailPage({
   const [clientRes, apptsRes, classBookingsRes, intakeRes] = await Promise.all([
     supabase()
       .from("clients")
-      .select("id, first_name, last_name, email, mobile, is_new_client, notes, created_at, exclude_from_loyalty")
+      .select("id, first_name, last_name, email, mobile, is_new_client, notes, created_at, exclude_from_loyalty, left_review_at")
       .eq("id", id)
       .single(),
 
@@ -242,6 +243,7 @@ export default async function ClientDetailPage({
               <span className="text-[#9a8f87]">Member since</span>{" "}
               {formatDate(client.created_at)}
             </p>
+            <LeftReviewToggle clientId={client.id} leftReviewAt={client.left_review_at} className="mt-2" />
             {client.notes && (
               <div className="mt-3 text-sm text-[#5a504a] bg-[#f8f5f2] rounded-lg px-3 py-2 border border-[#e8e0d8]">
                 <span className="text-[#9a8f87] text-xs uppercase tracking-wider font-medium block mb-0.5">Notes</span>

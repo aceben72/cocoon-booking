@@ -1,6 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { isValidEmail, normaliseSmsMobile } from "@/lib/utils";
+import { isPlaceholderEmail, isValidEmail, normaliseSmsMobile } from "@/lib/utils";
+import { setMailchimpTag } from "@/lib/notifications";
+
+const LEFT_REVIEW_TAG = "left-review";
 
 function supabase() {
   return createClient(
@@ -21,7 +24,7 @@ export async function GET(
   const [clientRes, apptsRes, classBookingsRes] = await Promise.all([
     supabase()
       .from("clients")
-      .select("id, first_name, last_name, email, mobile, is_new_client, notes, created_at")
+      .select("id, first_name, last_name, email, mobile, is_new_client, notes, created_at, left_review_at")
       .eq("id", id)
       .single(),
 
@@ -60,7 +63,10 @@ export async function GET(
 
 // PATCH /api/admin/clients/[id]
 // Updates the client's notes, loyalty exclusion and/or contact details
-// (first_name, last_name, email, mobile) — only the fields sent.
+// (first_name, last_name, email, mobile) and/or left_review — only the fields sent.
+// left_review: true stamps left_review_at = now() and adds the Mailchimp tag
+// "left-review"; false clears it and removes the tag. The tag is applied after
+// the response (after()) and a Mailchimp failure never undoes the DB update.
 // Reminders and notifications read clients.mobile / clients.email directly,
 // so fixing them here fixes every future send.
 export async function PATCH(
@@ -71,6 +77,7 @@ export async function PATCH(
   const body = await req.json().catch(() => ({})) as {
     notes?: string | null;
     exclude_from_loyalty?: boolean;
+    left_review?: boolean;
     first_name?: unknown;
     last_name?: unknown;
     email?: unknown;
@@ -80,6 +87,7 @@ export async function PATCH(
   const update: {
     notes?: string | null;
     exclude_from_loyalty?: boolean;
+    left_review_at?: string | null;
     first_name?: string;
     last_name?: string;
     email?: string;
@@ -87,6 +95,9 @@ export async function PATCH(
   } = {};
   if ("notes" in body) update.notes = body.notes ?? null;
   if (typeof body.exclude_from_loyalty === "boolean") update.exclude_from_loyalty = body.exclude_from_loyalty;
+  if (typeof body.left_review === "boolean") {
+    update.left_review_at = body.left_review ? new Date().toISOString() : null;
+  }
 
   for (const key of ["first_name", "last_name"] as const) {
     if (!(key in body)) continue;
@@ -158,7 +169,7 @@ export async function PATCH(
     .from("clients")
     .update(update)
     .eq("id", id)
-    .select("id, first_name, last_name, email, mobile")
+    .select("id, first_name, last_name, email, mobile, left_review_at")
     .maybeSingle();
 
   if (error) {
@@ -166,6 +177,21 @@ export async function PATCH(
   }
   if (!data) {
     return NextResponse.json({ error: "Client not found" }, { status: 404 });
+  }
+
+  if (typeof body.left_review === "boolean") {
+    const active = body.left_review;
+    const email = data.email?.trim() ?? "";
+    if (!email || isPlaceholderEmail(email)) {
+      console.log(`[left-review] client ${id}: no real email on file — DB updated, Mailchimp tag skipped`);
+    } else {
+      const contact = { email, firstName: data.first_name, lastName: data.last_name };
+      after(() =>
+        setMailchimpTag({ ...contact, tag: LEFT_REVIEW_TAG, active }).catch((err) =>
+          console.error(`[left-review] Mailchimp tag ${active ? "add" : "remove"} failed for client ${id} (${email}):`, err),
+        ),
+      );
+    }
   }
 
   return NextResponse.json({ success: true, client: data });

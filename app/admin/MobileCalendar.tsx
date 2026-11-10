@@ -7,6 +7,7 @@ import { LoyaltyBadge } from "@/components/LoyaltyBadge";
 import { CompletePaymentPanel } from "@/components/CompletePaymentPanel";
 import { appointmentBalanceCents, paidBalanceText } from "@/lib/complete-payment";
 import { ClientContactEditor } from "@/components/ClientContactEditor";
+import { LeftReviewToggle } from "@/components/LeftReviewToggle";
 import type { AppointmentLoyalty } from "@/lib/loyalty-rules";
 import { bookingLengthMinutes } from "@/lib/slot-rules";
 
@@ -20,7 +21,7 @@ interface CalendarAppointment {
   status: string;
   notes: string | null;
   services: { name: string; category: string; duration_minutes: number; padding_minutes: number } | null;
-  clients: { first_name: string; last_name: string; email: string; mobile: string | null; is_new_client?: boolean } | null;
+  clients: { first_name: string; last_name: string; email: string; mobile: string | null; is_new_client?: boolean; left_review_at?: string | null } | null;
   loyalty?: AppointmentLoyalty | null;
   extra_daughters?: number;
   appointment_attendees?: LessonAttendee[];
@@ -1137,6 +1138,16 @@ export default function MobileCalendar() {
                   onSaved={(c) => {
                     const clients = { ...selectedAppt.clients!, first_name: c.first_name, last_name: c.last_name, email: c.email, mobile: c.mobile };
                     setSelectedAppt({ ...selectedAppt, clients });
+                    fetchDay(selectedDate);
+                  }}
+                />
+                <LeftReviewToggle
+                  key={`review-${selectedAppt.id}`}
+                  clientId={selectedAppt.client_id}
+                  leftReviewAt={selectedAppt.clients.left_review_at}
+                  className="mt-3"
+                  onChange={(left_review_at) => {
+                    setSelectedAppt({ ...selectedAppt, clients: { ...selectedAppt.clients!, left_review_at } });
                     fetchDay(selectedDate);
                   }}
                 />

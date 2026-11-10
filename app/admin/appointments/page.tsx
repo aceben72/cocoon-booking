@@ -39,6 +39,7 @@ interface RawAppointment {
     email: string;
     mobile: string;
     is_new_client: boolean;
+    left_review_at: string | null;
   } | null;
   intake_forms: { id: string; status: string; token: string }[];
   facial_package_redemptions: { id: string }[];
@@ -86,7 +87,7 @@ async function getAppointments(status: string, from: string, to: string): Promis
       square_payment_id, payment_link_token, notes, created_at,
       extra_daughters,
       services ( name, category, duration_minutes, padding_minutes ),
-      clients ( first_name, last_name, email, mobile, is_new_client ),
+      clients ( first_name, last_name, email, mobile, is_new_client, left_review_at ),
       appointment_attendees ( role, position, experience_level, name, email, mobile ),
       intake_forms ( id, status, token ),
       facial_package_redemptions ( id )

@@ -50,6 +50,7 @@ export interface Client {
   is_new_client: boolean;
   notes: string | null;
   created_at: string;
+  left_review_at: string | null;
 }
 
 export type AppointmentStatus = "pending" | "confirmed" | "completed" | "cancelled" | "pending_payment";

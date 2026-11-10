@@ -1258,3 +1258,60 @@ export async function upsertMailchimpContact(params: {
 
   console.log(`[mailchimp] applied tag(s) [${tagsToApply.join(", ")}] to ${params.email}`);
 }
+
+/**
+ * Add (active) or remove (inactive) a single Mailchimp tag on a contact.
+ * Upserts the member first so a client not yet in the audience still gets
+ * the tag. Throws on failure — callers decide how to log it.
+ */
+export async function setMailchimpTag(params: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  tag: string;
+  active: boolean;
+}) {
+  const apiKey = process.env.MAILCHIMP_API_KEY;
+  if (!apiKey) return;
+
+  const server = apiKey.split("-").pop() ?? "us3";
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const subscriberHash = (require("crypto") as typeof import("crypto"))
+    .createHash("md5")
+    .update(params.email.toLowerCase())
+    .digest("hex");
+
+  const base = `https://${server}.api.mailchimp.com/3.0`;
+  const auth = Buffer.from(`anystring:${apiKey}`).toString("base64");
+  const headers = {
+    Authorization: `Basic ${auth}`,
+    "Content-Type": "application/json",
+  };
+
+  const memberRes = await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({
+      email_address: params.email.toLowerCase(),
+      status_if_new: "subscribed",
+      merge_fields: { FNAME: params.firstName, LNAME: params.lastName },
+    }),
+  });
+  if (!memberRes.ok) {
+    const err = await memberRes.json().catch(() => null);
+    throw new Error(`[mailchimp] member upsert failed for ${params.email}: ${JSON.stringify(err)}`);
+  }
+
+  const status = params.active ? "active" : "inactive";
+  const tagRes = await fetch(`${base}/lists/${MAILCHIMP_AUDIENCE_ID}/members/${subscriberHash}/tags`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tags: [{ name: params.tag, status }] }),
+  });
+  if (!tagRes.ok) {
+    const err = await tagRes.json().catch(() => null);
+    throw new Error(`[mailchimp] tag "${params.tag}" → ${status} failed for ${params.email}: ${JSON.stringify(err)}`);
+  }
+
+  console.log(`[mailchimp] tag "${params.tag}" set ${status} for ${params.email}`);
+}

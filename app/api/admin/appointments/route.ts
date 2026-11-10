@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       square_payment_id, notes, created_at,
       extra_daughters,
       services ( name, category, duration_minutes, padding_minutes ),
-      clients ( first_name, last_name, email, mobile, is_new_client ),
+      clients ( first_name, last_name, email, mobile, is_new_client, left_review_at ),
       appointment_attendees ( role, position, experience_level, name, email, mobile ),
       facial_package_redemptions ( id )
     `)

@@ -1,5 +1,6 @@
 "use client";
 
+import { LeftReviewToggle } from "@/components/LeftReviewToggle";
 import { LessonDetails, type LessonAttendee } from "@/components/LessonDetails";
 import { isMakeupLesson } from "@/lib/makeup-lessons";
 import React, { useState, useTransition, useEffect } from "react";
@@ -60,6 +61,7 @@ for (let h = 6; h <= 20; h++) {
 
 interface Appointment {
   id: string;
+  client_id: string;
   start_datetime: string;
   end_datetime: string;
   status: string;
@@ -79,6 +81,7 @@ interface Appointment {
     email: string;
     mobile: string;
     is_new_client: boolean;
+    left_review_at?: string | null;
   } | null;
   intake_forms: { id: string; status: string; token: string }[];
   facial_package_redemptions: { id: string }[];
@@ -1637,6 +1640,13 @@ export function AppointmentTable({
                                 ) : (
                                   <div>No</div>
                                 )}
+                              </div>
+                              <div className="col-span-2" onClick={(e) => e.stopPropagation()}>
+                                <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Google Review</div>
+                                <LeftReviewToggle
+                                  clientId={appt.client_id}
+                                  leftReviewAt={appt.clients?.left_review_at}
+                                />
                               </div>
                               <div>
                                 <div className="text-xs uppercase tracking-wider text-[#7a6f68] mb-0.5">Service Total</div>

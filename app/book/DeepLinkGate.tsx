@@ -10,7 +10,7 @@
 
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { SERVICES, CATEGORY_META } from "@/lib/services-data";
+import { SERVICES, CATEGORY_META, isBookableOnline } from "@/lib/services-data";
 
 // Allow friendlier aliases from external links (e.g. WordPress) that differ
 // from the internal category/service IDs used in the URL structure.
@@ -50,7 +50,7 @@ export default function DeepLinkGate() {
       // no category listing page and therefore no CATEGORY_META entry.
       const serviceId = resolveService(rawService);
       const service   = SERVICES.find(
-        (s) => s.id === serviceId && s.category === categoryId && s.active && !s.admin_only,
+        (s) => s.id === serviceId && s.category === categoryId && isBookableOnline(s),
       );
       if (service) {
         // Deep-link straight into the booking wizard at date selection.

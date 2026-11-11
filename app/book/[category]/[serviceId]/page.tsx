@@ -1,5 +1,5 @@
-import { notFound } from "next/navigation";
-import { SERVICES, CATEGORY_META } from "@/lib/services-data";
+import { notFound, redirect } from "next/navigation";
+import { SERVICES, CATEGORY_META, isBookableOnline } from "@/lib/services-data";
 import BookingWizard from "./BookingWizard";
 
 interface Props {
@@ -13,6 +13,8 @@ export default async function ServiceBookingPage({ params, searchParams }: Props
 
   const service = SERVICES.find((s) => s.id === serviceId && s.category === category);
   if (!service) notFound();
+  // Inactive, admin-only or hidden-online services: old links go to the category list.
+  if (!isBookableOnline(service)) redirect(`/book/${category}`);
 
   const catMeta = CATEGORY_META.find((c) => c.id === category);
 

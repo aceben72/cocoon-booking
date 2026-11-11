@@ -23,6 +23,7 @@ export interface Service {
   description?: string;       // shown on service card and booking summary
   active: boolean;
   admin_only?: boolean;       // if true, never shown in the client-facing booking flow
+  hide_online?: boolean;      // if true, not bookable online but still a normal paid service in admin
 }
 
 export interface AvailabilityRule {

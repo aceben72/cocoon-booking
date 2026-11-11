@@ -33,6 +33,14 @@ export const CATEGORY_META: CategoryMeta[] = [
   },
 ];
 
+/**
+ * Can a client book this service themselves (category page, deep links,
+ * /book/[category]/[serviceId], POST /api/bookings)? Admin booking ignores this.
+ */
+export function isBookableOnline(s: Service): boolean {
+  return s.active && !s.admin_only && !s.hide_online;
+}
+
 // Seed data — matches what will be in Supabase once schema is applied
 export const SERVICES: Service[] = [
   // Brow Treatments
@@ -44,7 +52,7 @@ export const SERVICES: Service[] = [
   { id: "brow-lamination-dye-wax", category: "brow-treatments", name: "Brow Lamination, Dye & Wax", duration_minutes: 60, padding_minutes: 30, price_cents: 9800, cash_price_cents: 9500, active: true },
 
   // Facials
-  { id: "basic-facial", category: "facials", name: "Basic Facial", duration_minutes: 45, padding_minutes: 30, price_cents: 10200, cash_price_cents: 9900, active: true },
+  { id: "basic-facial", category: "facials", name: "Basic Facial", duration_minutes: 45, padding_minutes: 30, price_cents: 10200, cash_price_cents: 9900, active: true, hide_online: true }, // off the website Nov 2026; Amanda can still book it in admin
   { id: "indulge-facial", category: "facials", name: "Indulge Facial", duration_minutes: 60, padding_minutes: 30, price_cents: 15400, cash_price_cents: 14900, active: true },
   { id: "opulence-facial", category: "facials", name: "Opulence Facial", duration_minutes: 80, padding_minutes: 30, price_cents: 20500, cash_price_cents: 19900, active: true },
   { id: "lifting-code-facial", category: "facials", name: "Lifting Code Facial", duration_minutes: 90, padding_minutes: 30, price_cents: 24700, cash_price_cents: 23900, active: true },

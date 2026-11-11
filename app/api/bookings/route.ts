@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { randomBytes } from "crypto";
-import { SERVICES } from "@/lib/services-data";
+import { SERVICES, isBookableOnline } from "@/lib/services-data";
 import { aestToUTC, normaliseMobile, hasDepositOption, bookingCashSavingText } from "@/lib/utils";
 import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
@@ -66,6 +66,10 @@ export async function POST(request: NextRequest) {
   const service = SERVICES.find((s) => s.id === serviceId);
   if (!service) {
     return NextResponse.json({ error: "Service not found" }, { status: 404 });
+  }
+  // Public route only: admin bookings (app/api/admin/bookings) skip this.
+  if (!isBookableOnline(service)) {
+    return NextResponse.json({ error: "This service isn't available to book online" }, { status: 400 });
   }
 
   // Whole-booking price: the service plus any Mother & Daughter extra

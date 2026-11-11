@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import BookingProgress from "@/components/BookingProgress";
-import { CATEGORY_META, SERVICES } from "@/lib/services-data";
+import { CATEGORY_META, SERVICES, isBookableOnline } from "@/lib/services-data";
 import { formatPrice, formatDuration, serviceCashSavingText, CASH_SAVING_NOTE } from "@/lib/utils";
 import type { ServiceCategory } from "@/types";
 import AllCategoriesLink from "../AllCategoriesLink";
@@ -20,7 +20,7 @@ export default async function SelectServicePage({ params }: Props) {
   if (!meta) notFound();
 
   const services = SERVICES.filter(
-    (s) => s.category === (category as ServiceCategory) && s.active && !s.admin_only,
+    (s) => s.category === (category as ServiceCategory) && isBookableOnline(s),
   );
 
   return (

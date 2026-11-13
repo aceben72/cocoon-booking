@@ -2,7 +2,8 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID, randomBytes } from "crypto";
 import { SERVICES } from "@/lib/services-data";
-import { aestToUTC, normaliseMobile } from "@/lib/utils";
+import { aestToUTC, normaliseAuMobile } from "@/lib/utils";
+import { findClientMatch, findOrCreateClient, mailchimpEmailFor } from "@/lib/client-lookup";
 import { sendPaymentRequest, sendAppointmentConfirmation, sendAdminBookingNotification, tagMailchimpFacialBooked } from "@/lib/notifications";
 import { hasBookingConflict } from "@/lib/booking-conflicts";
 import {
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate mobile
-  const mobile = normaliseMobile(rawMobile);
+  const mobile = normaliseAuMobile(rawMobile);
   if (!mobile) {
     return NextResponse.json({ error: "Invalid Australian mobile number" }, { status: 400 });
   }
@@ -126,12 +127,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Existing client? (A new one is saved below, once the payment checks out.)
-  const { data: existingClient } = await db
-    .from("clients")
-    .select("id")
-    .eq("email", email)
-    .single();
+  // Existing client? Same rules as every booking (lib/client-lookup.ts):
+  // email, else a single mobile + first-name match. A new one is saved
+  // below, once the payment checks out.
+  let existingClient: { id: string } | null = null;
+  try {
+    const match = await findClientMatch(db, { email, firstName, mobile });
+    existingClient = match ? { id: match.clientId } : null;
+  } catch (err) {
+    console.error("[admin/bookings] client lookup failed:", err);
+    return NextResponse.json({ error: "Couldn't look up the client. Please try again." }, { status: 503 });
+  }
 
   // Loyalty: a payment-link booking gets a due reward up front so the link
   // never charges more than is owed. Pay-on-the-day bookings show the reward
@@ -176,30 +182,22 @@ export async function POST(request: NextRequest) {
   const isNoCharge = amounts.amountCents === 0;
   const isPaymentLink = amounts.status === "pending_payment";
 
-  let clientId: string;
-  if (existingClient) {
-    clientId = existingClient.id as string;
-  } else {
-    const { data: newClient, error: clientErr } = await db
-      .from("clients")
-      .insert({
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        mobile,
-        is_new_client: true,
-      })
-      .select("id")
-      .single();
-
-    if (clientErr || !newClient) {
-      return NextResponse.json(
-        { error: `Failed to save client: ${clientErr?.message ?? "unknown"}` },
-        { status: 500 },
-      );
-    }
-    clientId = newClient.id as string;
+  let clientMatch: Awaited<ReturnType<typeof findOrCreateClient>>;
+  try {
+    clientMatch = await findOrCreateClient(db, {
+      firstName,
+      lastName,
+      email,
+      mobile,
+      isNewClient: true,
+    });
+  } catch (clientErr) {
+    return NextResponse.json(
+      { error: `Failed to save client: ${clientErr instanceof Error ? clientErr.message : "unknown"}` },
+      { status: 500 },
+    );
   }
+  const clientId = clientMatch.clientId;
 
   // Build appointment insert payload
   const apptPayload = {
@@ -272,7 +270,7 @@ export async function POST(request: NextRequest) {
     (request.headers.get("origin") || "http://localhost:3000");
 
   // Create intake form for new clients (excluding make-up classes and no-charge/internal services)
-  const isNewClient = !existingClient;
+  const isNewClient = clientMatch.matchedBy === "created";
   let intakeFormUrl: string | null = null;
   if (isNewClient && !isNoCharge && !isMakeupLesson(service.name)) {
     try {
@@ -296,10 +294,12 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Mailchimp: tag facial-booked on creation ─────────────────────────
-  if (service.category === "facials") {
+  // Matched by mobile + first name → tag her existing (stored) email.
+  const mailchimpEmail = mailchimpEmailFor(clientMatch, email);
+  if (service.category === "facials" && mailchimpEmail) {
     after(() =>
       tagMailchimpFacialBooked({
-        email,
+        email: mailchimpEmail,
         firstName,
         lastName,
       }).catch((err) => console.error("[admin/bookings] mailchimp facial-booked tag failed:", err)),
@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
         serviceName:     service.name,
         durationMinutes: service.duration_minutes,
         startISO,
-        isNewClient:     !existingClient,
+        isNewClient,
         notes:           null,
         client:          { first_name: firstName, last_name: lastName, email, mobile },
       }).catch(console.error),

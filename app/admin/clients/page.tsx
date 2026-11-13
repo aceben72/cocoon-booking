@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { ClientsTable, type ClientRow } from "./ClientsTable";
 
@@ -132,6 +133,9 @@ export default async function ClientsPage({
           Clients
         </h1>
         <span className="text-sm text-[#7a6f68]">
+          <Link href="/admin/clients/duplicates" className="text-[#044e77] hover:underline mr-4">
+            Possible duplicates
+          </Link>
           {enriched.length} client{enriched.length !== 1 ? "s" : ""}
           {q && ` matching "${q}"`}
         </span>

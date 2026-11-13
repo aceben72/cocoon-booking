@@ -46,7 +46,8 @@ const MAP = {
 };
 
 // ── Mobile normalisation ──────────────────────────────────────────────────
-// Mirrors the normaliseMobile() function used in the booking system.
+// Only used to warn about non-AU numbers; the stored value comes from
+// public.normalise_mobile() (same rule as normaliseMobile() in lib/utils.ts).
 // Returns "+61XXXXXXXXX" for valid Australian mobiles, or null otherwise.
 function normaliseMobile(raw) {
   if (!raw) return null;
@@ -105,15 +106,17 @@ async function main() {
 
     const mobile = normaliseMobile(rawPhone);
     if (rawPhone && !mobile) {
-      console.warn(`  ⚠️   Row ${processed}: could not normalise phone "${rawPhone}" for ${email} — importing without mobile`);
+      console.warn(`  ⚠️   Row ${processed}: "${rawPhone}" for ${email} is not an Australian mobile — stored as digits only`);
     }
 
-    // Check whether this email already exists (case-insensitive via ilike)
-    const { data: existing, error: lookupErr } = await supabase
-      .from("clients")
-      .select("id")
-      .ilike("email", email)
-      .maybeSingle();
+    // Same matching as every booking (find_client_match in
+    // supabase/migrations/client_dedupe_2026_11.sql): email, else a single
+    // mobile + first-name match. Existing clients are skipped.
+    const { data: matches, error: lookupErr } = await supabase.rpc("find_client_match", {
+      p_email: email,
+      p_first_name: firstName,
+      p_mobile: rawPhone || null,
+    });
 
     if (lookupErr) {
       console.error(`  ❌  Row ${processed}: lookup failed for ${email}:`, lookupErr.message);
@@ -121,23 +124,23 @@ async function main() {
       continue;
     }
 
+    const existing = (matches ?? []).find((m) => m.client_id);
     if (existing) {
-      console.log(`  ↩️   Row ${processed}: ${email} — already exists, skipped`);
+      console.log(`  ↩️   Row ${processed}: ${email} — already exists (${existing.matched_by}), skipped`);
       skipped++;
       continue;
     }
 
-    // Insert new client
-    const { error: insertErr } = await supabase
-      .from("clients")
-      .insert({
-        first_name:    firstName || "Unknown",
-        last_name:     lastName  || "",
-        email,
-        mobile:        mobile ?? null,
-        is_new_client: false,
-        notes:         null,
-      });
+    // Insert through the shared function (mobile normalised in SQL;
+    // a unique-email race re-uses the existing client).
+    const { error: insertErr } = await supabase.rpc("find_or_create_client", {
+      p_first_name:    firstName || "Unknown",
+      p_last_name:     lastName  || "",
+      p_email:         email,
+      p_mobile:        rawPhone || null,
+      p_is_new_client: false,
+      p_notes:         null,
+    });
 
     if (insertErr) {
       console.error(`  ❌  Row ${processed}: insert failed for ${email}:`, insertErr.message);

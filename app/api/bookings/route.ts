@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { randomBytes } from "crypto";
 import { SERVICES, isBookableOnline } from "@/lib/services-data";
-import { aestToUTC, normaliseMobile, hasDepositOption, bookingCashSavingText } from "@/lib/utils";
+import { aestToUTC, normaliseAuMobile, normaliseMobile, hasDepositOption, bookingCashSavingText } from "@/lib/utils";
+import { findOrCreateClient, mailchimpEmailFor, publicBookingClient } from "@/lib/client-lookup";
 import { validateGiftCard } from "@/lib/gift-cards";
 import { validateCoupon, calculateDiscount } from "@/lib/coupons";
 import { validateFacialPackage } from "@/lib/facial-packages";
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
   const priceCents = bookingPriceCents(service, extraDaughters);
 
   // Validate mobile
-  const mobile = normaliseMobile(client.mobile);
+  const mobile = normaliseAuMobile(client.mobile);
   if (!mobile) {
     return NextResponse.json({ error: "Invalid Australian mobile number" }, { status: 400 });
   }
@@ -308,53 +309,32 @@ export async function POST(request: NextRequest) {
   const directPaymentRows = paymentRows.filter((r) => r.method !== "gift_card");
   const initialAmountPaidCents = directPaymentRows.reduce((sum, r) => sum + r.amountCents, 0);
 
-  // ── Upsert client ─────────────────────────────────────────────────────
-  // Use ILIKE for case-insensitive email matching so that e.g. Jane@gmail.com
-  // correctly resolves to an existing jane@gmail.com record.
-  const { data: existingClient } = await supabase
-    .from("clients")
-    .select("id")
-    .ilike("email", client.email)
-    .maybeSingle();
-
-  let clientId: string;
-
-  if (existingClient) {
-    // Returning client — keep their existing is_new_client value (never flip it
-    // back to true), but refresh name/mobile in case they've changed.
-    clientId = existingClient.id;
-    await supabase
-      .from("clients")
-      .update({
-        first_name: client.first_name,
-        last_name: client.last_name,
-        mobile,
-        notes: client.notes || null,
-      })
-      .eq("id", clientId);
-  } else {
-    // Brand-new client — honour the is_new_client flag they submitted.
-    const { data: newClient, error: clientError } = await supabase
-      .from("clients")
-      .insert({
-        first_name: client.first_name,
-        last_name: client.last_name,
-        email: client.email,
-        mobile,
-        is_new_client: client.is_new_client,
-        notes: client.notes || null,
-      })
-      .select("id")
-      .single();
-
-    if (clientError || !newClient) {
-      console.error("[bookings] client insert failed:", clientError);
-      return NextResponse.json(
-        { error: `Failed to save client details: ${clientError?.message ?? "unknown"}` },
-        { status: 500 },
-      );
-    }
-    clientId = newClient.id;
+  // ── Find or create client (lib/client-lookup.ts) ─────────────────────
+  // Email match → that client (name/mobile refreshed, typed notes added).
+  // Else a single mobile + first-name match → that client, stored email
+  // untouched, "Also booked with …" noted. Else a new client.
+  // PRIVACY: nothing from a matched record goes back in the response.
+  let clientMatch: Awaited<ReturnType<typeof findOrCreateClient>>;
+  try {
+    clientMatch = await findOrCreateClient(supabase, {
+      firstName: client.first_name,
+      lastName: client.last_name,
+      email: client.email,
+      mobile,
+      isNewClient: !!client.is_new_client,
+      notes: client.notes || null,
+      refreshOnEmailMatch: true,
+    });
+  } catch (clientError) {
+    console.error("[bookings] client save failed:", clientError);
+    return NextResponse.json(
+      { error: `Failed to save client details: ${clientError instanceof Error ? clientError.message : "unknown"}` },
+      { status: 500 },
+    );
+  }
+  const clientId = clientMatch.clientId;
+  if (clientMatch.matchedBy === "mobile_name") {
+    console.log(`[bookings] matched existing client ${clientId} by mobile + first name (booked with a different email)`);
   }
 
   // ── Create appointment ────────────────────────────────────────────────
@@ -525,10 +505,12 @@ export async function POST(request: NextRequest) {
   }
 
   // ── Mailchimp: tag facial-booked on creation ─────────────────────────
-  if (service.category === "facials") {
+  // Matched by mobile + first name → tag her existing (stored) email.
+  const mailchimpEmail = mailchimpEmailFor(clientMatch, client.email);
+  if (service.category === "facials" && mailchimpEmail) {
     after(() =>
       tagMailchimpFacialBooked({
-        email: client.email,
+        email: mailchimpEmail,
         firstName: client.first_name,
         lastName: client.last_name,
       }).catch((err) => console.error("[bookings] mailchimp facial-booked tag failed:", err)),
@@ -570,11 +552,7 @@ export async function POST(request: NextRequest) {
     loyaltyDiscountCents,
     paidViaFacialPackage: facialPackagePaidInFull,
     isNewClient: !!client.is_new_client,
-    client: {
-      first_name: client.first_name,
-      last_name: client.last_name,
-      email: client.email,
-    },
+    client: publicBookingClient(client),
   });
 }
 

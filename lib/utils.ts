@@ -87,17 +87,35 @@ export function formatDuration(minutes: number): string {
   return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
 }
 
-/** Normalise an Australian mobile to +61 format. Returns null if invalid. */
-export function normaliseMobile(raw: string): string | null {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("61") && digits.length === 11) return `+${digits}`;
-  if (digits.startsWith("0") && digits.length === 10) return `+61${digits.slice(1)}`;
-  return null;
+/**
+ * The one mobile rule, used on every write and in client matching. Mirrored
+ * by public.normalise_mobile() in supabase/migrations/client_dedupe_2026_11.sql
+ * (lib/client-dedupe.test.ts checks they agree).
+ *   0438 222 499 · 0438222499 · 438222499 · 61438222499 · +61438222499 ·
+ *   +61 0438 222 499 · (0438) 222-499   →   +61438222499
+ * Anything else (overseas numbers): digits only, keeping a leading +.
+ * Blank → null.
+ */
+export function normaliseMobile(raw: string | null | undefined): string | null {
+  const trimmed = (raw ?? "").trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return null;
+  if (/^610\d{9}$/.test(digits)) return `+61${digits.slice(3)}`;
+  if (/^61\d{9}$/.test(digits)) return `+${digits}`;
+  if (/^0\d{9}$/.test(digits)) return `+61${digits.slice(1)}`;
+  if (/^4\d{8}$/.test(digits)) return `+61${digits}`;
+  return (trimmed.startsWith("+") ? "+" : "") + digits;
+}
+
+/** normaliseMobile, but only an Australian number (+61 and 9 digits). Null otherwise. */
+export function normaliseAuMobile(raw: string | null | undefined): string | null {
+  const mobile = normaliseMobile(raw);
+  return mobile && /^\+61\d{9}$/.test(mobile) ? mobile : null;
 }
 
 /** Validate Australian mobile number format */
 export function isValidAustralianMobile(mobile: string): boolean {
-  return normaliseMobile(mobile) !== null;
+  return normaliseAuMobile(mobile) !== null;
 }
 
 /** normaliseMobile, but only accepts a real mobile (+614…) — landlines can't get SMS. */

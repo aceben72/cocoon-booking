@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { normaliseMobile } from "@/lib/utils";
+import { normaliseAuMobile } from "@/lib/utils";
+import { findOrCreateClient, publicBookingClient } from "@/lib/client-lookup";
 import { sendClassBookingConfirmation, sendAdminClassNotification } from "@/lib/notifications";
 import { CLASS_TYPE_CONFIG } from "@/lib/class-types";
 import { validateCouponForClass, calculateDiscount } from "@/lib/coupons";
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const mobile = normaliseMobile(client.mobile);
+  const mobile = normaliseAuMobile(client.mobile);
   if (!mobile) {
     return NextResponse.json({ error: "Invalid Australian mobile number" }, { status: 400 });
   }
@@ -135,39 +136,25 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── Upsert client ─────────────────────────────────────────────────────────
-  const { data: existingClient } = await supabase
-    .from("clients")
-    .select("id")
-    .eq("email", client.email)
-    .single();
-
+  // ── Find or create client (lib/client-lookup.ts) ───────────────────────
+  // Same rules as appointment bookings. PRIVACY: nothing from a matched
+  // record goes back in the response.
   let clientId: string;
-
-  if (existingClient) {
-    clientId = existingClient.id;
-  } else {
-    const { data: newClient, error: clientError } = await supabase
-      .from("clients")
-      .insert({
-        first_name: client.first_name,
-        last_name: client.last_name,
-        email: client.email,
-        mobile,
-        is_new_client: client.is_new_client,
-        notes: client.notes || null,
-      })
-      .select("id")
-      .single();
-
-    if (clientError || !newClient) {
-      console.error("[class-bookings] client insert failed:", clientError);
-      return NextResponse.json(
-        { error: `Failed to save client details: ${clientError?.message ?? "unknown"}` },
-        { status: 500 },
-      );
-    }
-    clientId = newClient.id;
+  try {
+    ({ clientId } = await findOrCreateClient(supabase, {
+      firstName: client.first_name,
+      lastName: client.last_name,
+      email: client.email,
+      mobile,
+      isNewClient: !!client.is_new_client,
+      notes: client.notes || null,
+    }));
+  } catch (clientError) {
+    console.error("[class-bookings] client save failed:", clientError);
+    return NextResponse.json(
+      { error: `Failed to save client details: ${clientError instanceof Error ? clientError.message : "unknown"}` },
+      { status: 500 },
+    );
   }
 
   // ── Final spot check (within same DB connection, minimises race window) ──
@@ -278,10 +265,6 @@ export async function POST(request: NextRequest) {
     amountCents: amountToChargeCents,
     discountCents: couponDiscountCents,
     quantity,
-    client: {
-      first_name: client.first_name,
-      last_name:  client.last_name,
-      email:      client.email,
-    },
+    client: publicBookingClient(client),
   });
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LogoutButton } from "./LogoutButton";
 import AdminMobileWrapper from "./AdminMobileWrapper";
+import { DuplicatesBadge } from "./DuplicatesBadge";
 
 export const metadata = { title: "Admin | Cocoon Skin & Beauty" };
 
@@ -18,7 +19,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <nav className="hidden sm:flex items-center gap-1 text-sm">
               <NavLink href="/admin/appointments">Appointments</NavLink>
               <NavLink href="/admin/classes">Classes</NavLink>
-              <NavLink href="/admin/clients">Clients</NavLink>
+              <span className="inline-flex items-center">
+                <NavLink href="/admin/clients">Clients</NavLink>
+                <DuplicatesBadge />
+              </span>
               <NavLink href="/admin/gift-cards">Gift Cards</NavLink>
               <NavLink href="/admin/facial-packages">Facial Packages</NavLink>
               <NavLink href="/admin/coupons">Coupons</NavLink>

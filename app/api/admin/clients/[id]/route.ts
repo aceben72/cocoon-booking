@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isPlaceholderEmail, isValidEmail, normaliseSmsMobile } from "@/lib/utils";
 import { setMailchimpTag } from "@/lib/notifications";
+import { emailTakenMessage } from "@/lib/client-lookup";
 
 const LEFT_REVIEW_TAG = "left-review";
 
@@ -112,7 +113,8 @@ export async function PATCH(
   }
 
   if ("email" in body) {
-    const email = typeof body.email === "string" ? body.email.trim() : "";
+    // Stored trimmed + lower-case (one client per email: clients_email_unique).
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     if (!isValidEmail(email)) {
       return NextResponse.json({ error: "Enter a valid email address" }, { status: 400 });
     }
@@ -145,7 +147,8 @@ export async function PATCH(
 
   // Bookings match clients by email (case-insensitive), so two clients
   // sharing one would merge their history. Escape ILIKE wildcards.
-  if (update.email) {
+  // Placeholder addresses may be shared (the unique index skips them too).
+  if (update.email && !isPlaceholderEmail(update.email)) {
     const pattern = update.email.replace(/[\\%_]/g, (c) => `\\${c}`);
     const { data: clash, error: clashErr } = await db
       .from("clients")
@@ -159,7 +162,7 @@ export async function PATCH(
     }
     if (clash) {
       return NextResponse.json(
-        { error: `${clash.first_name} ${clash.last_name} already uses that email` },
+        { error: emailTakenMessage(clash), code: "email_taken", otherClientId: clash.id },
         { status: 409 },
       );
     }
@@ -173,6 +176,20 @@ export async function PATCH(
     .maybeSingle();
 
   if (error) {
+    // Unique index caught it (saved elsewhere since the check above).
+    if (error.code === "23505" && update.email) {
+      const { data: other } = await db
+        .from("clients")
+        .select("id, first_name, last_name")
+        .eq("email", update.email)
+        .neq("id", id)
+        .limit(1)
+        .maybeSingle();
+      return NextResponse.json(
+        { error: other ? emailTakenMessage(other) : "That email belongs to another client, merge the two clients instead", code: "email_taken", otherClientId: other?.id ?? null },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ error: "Failed to update client" }, { status: 500 });
   }
   if (!data) {

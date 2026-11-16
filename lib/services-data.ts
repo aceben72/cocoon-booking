@@ -45,10 +45,10 @@ export function isBookableOnline(s: Service): boolean {
 export const SERVICES: Service[] = [
   // Brow Treatments
   { id: "brow-wax", category: "brow-treatments", name: "Brow Wax", duration_minutes: 30, padding_minutes: 30, price_cents: 2600, cash_price_cents: 2500, active: true },
-  { id: "brow-hybrid-dye", category: "brow-treatments", name: "Brow Hybrid Dye", duration_minutes: 30, padding_minutes: 30, price_cents: 3100, cash_price_cents: 3000, active: true },
-  { id: "brow-lamination", category: "brow-treatments", name: "Brow Lamination", duration_minutes: 35, padding_minutes: 30, price_cents: 6700, cash_price_cents: 6500, active: true },
+  { id: "brow-hybrid-dye", category: "brow-treatments", name: "Brow Hybrid Dye", duration_minutes: 30, padding_minutes: 30, price_cents: 3100, cash_price_cents: 3000, active: true, hide_online: true }, // off the website Nov 2026; Amanda can still book it in admin
+  { id: "brow-lamination", category: "brow-treatments", name: "Brow Lamination", duration_minutes: 35, padding_minutes: 30, price_cents: 6700, cash_price_cents: 6500, active: true, hide_online: true }, // off the website Nov 2026; Amanda can still book it in admin
   { id: "brow-hybrid-dye-wax", category: "brow-treatments", name: "Brow Hybrid Dye & Wax", duration_minutes: 40, padding_minutes: 30, price_cents: 4700, cash_price_cents: 4500, active: true },
-  { id: "brow-lamination-dye", category: "brow-treatments", name: "Brow Lamination & Dye", duration_minutes: 45, padding_minutes: 30, price_cents: 8300, cash_price_cents: 8000, active: true },
+  { id: "brow-lamination-dye", category: "brow-treatments", name: "Brow Lamination & Dye", duration_minutes: 45, padding_minutes: 30, price_cents: 8300, cash_price_cents: 8000, active: true, hide_online: true }, // off the website Nov 2026; Amanda can still book it in admin
   { id: "brow-lamination-dye-wax", category: "brow-treatments", name: "Brow Lamination, Dye & Wax", duration_minutes: 60, padding_minutes: 30, price_cents: 9800, cash_price_cents: 9500, active: true },
 
   // Facials
